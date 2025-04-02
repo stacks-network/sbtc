@@ -777,55 +777,72 @@ mod tests {
     use crate::storage::model::DkgSharesStatus;
     use crate::testing::block_observer::TestHarness;
     use crate::testing::context::*;
+    use proptest::prelude::*;
 
     use super::*;
 
-    #[test(tokio::test)]
-    async fn should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let storage = storage::in_memory::Store::new_shared();
-        let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
-        let min_height = test_harness.min_block_height();
-        let ctx = TestContext::builder()
-            .with_storage(storage.clone())
-            .with_stacks_client(test_harness.clone())
-            .with_emily_client(test_harness.clone())
-            .with_bitcoin_client(test_harness.clone())
-            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = min_height)
-            .build();
+    // Constants for proptest strategies
+    const MAX_PROPTEST_ITERATIONS: u32 = 10000;
 
-        // There must be at least one signal receiver alive when the block observer
-        // later tries to send a signal, hence this line.
-        let _signal_rx = ctx.get_signal_receiver();
-        let block_hash_stream = test_harness.spawn_block_hash_stream();
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(MAX_PROPTEST_ITERATIONS))]
 
-        let block_observer = BlockObserver {
-            context: ctx.clone(),
-            bitcoin_blocks: block_hash_stream,
-        };
+        #[test]
+        fn properly_should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream(seed in 0..=1000u64) {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let _ = rt.block_on(should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream(seed));
+            std::thread::sleep(Duration::from_secs(5));
+        }
+    }
 
-        let handle = tokio::spawn(block_observer.run());
-        ctx.wait_for_signal(Duration::from_secs(3), |signal| {
-            matches!(
-                signal,
-                SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
-            )
-        })
-        .await
-        .expect("block observer failed to complete within timeout");
+        
+        async fn should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream(seed: u64) {
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            let storage = storage::in_memory::Store::new_shared();
+            let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+            let min_height = test_harness.min_block_height();
+            let ctx = TestContext::builder()
+                .with_storage(storage.clone())
+                .with_stacks_client(test_harness.clone())
+                .with_emily_client(test_harness.clone())
+                .with_bitcoin_client(test_harness.clone())
+                .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = min_height)
+                .build();
 
-        for block in test_harness.bitcoin_blocks() {
-            let persisted = storage
-                .get_bitcoin_block(&block.block_hash().into())
-                .await
-                .expect("storage error")
-                .expect("block wasn't persisted");
+            // There must be at least one signal receiver alive when the block observer
+            // later tries to send a signal, hence this line.
+            let _signal_rx = ctx.get_signal_receiver();
+            let block_hash_stream = test_harness.spawn_block_hash_stream();
 
-            assert_eq!(persisted.block_hash, block.block_hash().into())
+            let block_observer = BlockObserver {
+                context: ctx.clone(),
+                bitcoin_blocks: block_hash_stream,
+            };
+
+            let handle = tokio::spawn(block_observer.run());
+            ctx.wait_for_signal(Duration::from_secs(3), |signal| {
+                matches!(
+                    signal,
+                    SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
+                )
+            })
+            .await
+            .expect("block observer failed to complete within timeout");
+
+            for block in test_harness.bitcoin_blocks() {
+                let persisted = storage
+                    .get_bitcoin_block(&block.block_hash().into())
+                    .await
+                    .expect("storage error")
+                    .expect("block wasn't persisted");
+
+                assert_eq!(persisted.block_hash, block.block_hash().into())
+            }
+
+            handle.abort();
         }
 
-        handle.abort();
-    }
+    
 
     /// Test that `BlockObserver::load_latest_deposit_requests` takes
     /// deposits from emily, validates them and only keeps the ones that
