@@ -61,7 +61,7 @@ Docker container images and their cryptographic hash).
 After a new release has been created, the sBTC Comms team will inform the sBTC
 signers and provide the appropriate update instructions.
 
-All members of the sBTC Comms team MUST NOT be participating to sBTC development
+All members of the sBTC Comms team MUST NOT be participating in sBTC development
 (that is, they MUST NOT be part of the Core developers team). This ensures clear
 separation of duties and prevents a rogue core developer from "convincing" the
 sBTC signers of deploying a tampered release.
