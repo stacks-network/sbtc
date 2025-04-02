@@ -82,7 +82,7 @@ integration-test-build:
 	cargo $(CARGO_FLAGS) test build --features "testing" $(CARGO_EXCLUDES) --test integration --no-run --locked
 
 integration-docker-cleanup:
-    docker ps -aq --filter "name=sbtc-test-" | xargs -r docker rm -f
+	docker ps -aq --filter "name=sbtc-test-" | xargs -r docker rm -f
 
 integration-env-down: integration-docker-cleanup
 	docker compose --file docker/docker-compose.test.yml down -t 0 -v
