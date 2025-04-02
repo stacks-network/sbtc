@@ -3,13 +3,13 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use utoipa::Modify;
+use utoipa::OpenApi;
 use utoipa::openapi::path::Parameter;
 use utoipa::openapi::path::ParameterIn;
 use utoipa::openapi::security::ApiKey;
 use utoipa::openapi::security::ApiKeyValue;
 use utoipa::openapi::security::SecurityScheme;
-use utoipa::Modify;
-use utoipa::OpenApi;
 
 /// The private api definition.
 pub mod private;
