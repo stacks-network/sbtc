@@ -399,7 +399,7 @@ impl PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         output_type: model::TxOutputType,
-        min_block_height: i64,
+        min_block_height: BitcoinBlockHeight,
     ) -> Result<Option<SignerUtxo>, Error> {
         let pg_utxo = sqlx::query_as::<_, PgSignerUtxo>(
             r#"
@@ -435,7 +435,7 @@ impl PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(min_block_height)
+        .bind(*min_block_height as i32)
         .bind(output_type)
         .fetch_optional(&self.0)
         .await
@@ -450,8 +450,8 @@ impl PgStore {
     async fn get_least_txo_height(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        min_block_height: i64,
-    ) -> Result<Option<i64>, Error> {
+        min_block_height: BitcoinBlockHeight,
+    ) -> Result<Option<BitcoinBlockHeight>, Error> {
         sqlx::query_scalar::<_, i64>(
             r#"
             SELECT bb.block_height
@@ -469,10 +469,11 @@ impl PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(min_block_height)
+        .bind(*min_block_height as i64)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
+        .map(|height| height.map(|height| BitcoinBlockHeight::from(height as i32)))
     }
 
     /// Return the height of the earliest block in which a donation UTXO
@@ -482,7 +483,7 @@ impl PgStore {
     ///
     /// This function does not check whether the donation output has been
     /// spent.
-    pub async fn minimum_donation_txo_height(&self) -> Result<Option<i64>, Error> {
+    pub async fn minimum_donation_txo_height(&self) -> Result<Option<BitcoinBlockHeight>, Error> {
         sqlx::query_scalar::<_, i64>(
             r#"
             SELECT bb.block_height
@@ -497,6 +498,7 @@ impl PgStore {
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
+        .map(|height| height.map(|height| BitcoinBlockHeight::from(height as i32)))
     }
 
     /// Return a donation UTXO with minimum height.
@@ -527,7 +529,7 @@ impl PgStore {
     ///   to the height returned here should contain the transaction with
     ///   the signers' UTXO, and won't if there is a reorg spanning more
     ///   than [`MAX_REORG_BLOCK_COUNT`] blocks.
-    pub async fn minimum_utxo_height(&self) -> Result<Option<i64>, Error> {
+    pub async fn minimum_utxo_height(&self) -> Result<Option<BitcoinBlockHeight>, Error> {
         #[derive(sqlx::FromRow)]
         struct PgCandidateUtxo {
             txid: model::BitcoinTxId,
@@ -584,9 +586,9 @@ impl PgStore {
 
         // Given the utxo candidate above, this is our best guess of the
         // minimum UTXO height. It might be wrong, we'll find out shortly.
-        let min_block_height_candidate = utxo_candidate
-            .block_height
-            .saturating_sub(MAX_REORG_BLOCK_COUNT);
+        let min_block_height_candidate =
+            BitcoinBlockHeight::from(utxo_candidate.block_height as i32)
+                .saturating_sub(MAX_REORG_BLOCK_COUNT as i32);
 
         // We want to go back at least MAX_REORG_BLOCK_COUNT blocks worth
         // of transactions. The number here is the maximum number of
@@ -653,7 +655,8 @@ impl PgStore {
         .bind(min_block_height_candidate)
         .fetch_optional(&self.0)
         .await
-        .map_err(Error::SqlxQuery)?;
+        .map_err(Error::SqlxQuery)?
+        .map(|height| BitcoinBlockHeight::from(height as i32));
 
         // We need to go back at least MAX_REORG_BLOCK_COUNT blocks before
         // the confirmation height of our best candidate height. If there
@@ -677,7 +680,7 @@ impl PgStore {
         &self,
         txid: &model::BitcoinTxId,
         output_index: u32,
-    ) -> Result<Option<i64>, Error> {
+    ) -> Result<Option<BitcoinBlockHeight>, Error> {
         // Before the deposit request is written a signer also stores the
         // bitcoin transaction and (after #731) the bitcoin block
         // confirming the deposit to the database. So this will return zero
@@ -699,6 +702,7 @@ impl PgStore {
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
+        .map(|height| height.map(|height| BitcoinBlockHeight::from(height as i32)))
     }
 
     /// Return the txid of the bitcoin transaction that swept in the
@@ -2268,7 +2272,9 @@ impl super::DbRead for PgStore {
 
         // We add one because we are interested in sweeps that were
         // confirmed after the signers last considered the withdrawal.
-        let Some(min_block_height) = last_considered_height.map(|x| x + 1) else {
+        let Some(min_block_height) =
+            last_considered_height.map(|x| BitcoinBlockHeight::from(x as u64) + 1u64)
+        else {
             // This means that there are no rows associated with the ID in the
             // `bitcoin_withdrawals_outputs` table.
             return Ok(false);

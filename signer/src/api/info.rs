@@ -10,7 +10,7 @@ use crate::{
     context::Context,
     stacks::api::StacksInteract,
     storage::{
-        model::{BitcoinBlockHash, BitcoinBlockHeight, StacksBlockHash},
+        model::{BitcoinBlockHash, BitcoinBlockHeight, StacksBlockHash, StacksBlockHeight},
         DbRead,
     },
 };
@@ -37,8 +37,8 @@ pub struct BuildInfo {
 
 #[derive(Debug, Default, Serialize)]
 pub struct BitcoinInfo {
-    pub signer_tip: Option<ChainTipInfo<BitcoinBlockHash>>,
-    pub node_tip: Option<ChainTipInfo<BitcoinBlockHash>>,
+    pub signer_tip: Option<ChainTipInfo<BitcoinBlockHash, BitcoinBlockHeight>>,
+    pub node_tip: Option<ChainTipInfo<BitcoinBlockHash, BitcoinBlockHeight>>,
     pub node_chain: Option<String>,
     pub node_version: Option<usize>,
     pub node_subversion: Option<String>,
@@ -46,16 +46,16 @@ pub struct BitcoinInfo {
 
 #[derive(Debug, Default, Serialize)]
 pub struct StacksInfo {
-    pub signer_tip: Option<ChainTipInfo<StacksBlockHash>>,
-    pub node_tip: Option<ChainTipInfo<StacksBlockId>>,
+    pub signer_tip: Option<ChainTipInfo<StacksBlockHash, StacksBlockHeight>>,
+    pub node_tip: Option<ChainTipInfo<StacksBlockId, StacksBlockHeight>>,
     pub node_bitcoin_block_height: Option<BitcoinBlockHeight>,
     pub node_version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct ChainTipInfo<T> {
-    pub block_hash: T,
-    pub block_height: u64,
+pub struct ChainTipInfo<THash, THeight> {
+    pub block_hash: THash,
+    pub block_height: THeight,
 }
 
 #[derive(Debug, Serialize)]
@@ -184,7 +184,7 @@ impl InfoResponse {
 
                 self.bitcoin.signer_tip = Some(ChainTipInfo {
                     block_hash: bitcoin_block.block_hash,
-                    block_height: *bitcoin_block.block_height,
+                    block_height: bitcoin_block.block_height,
                 });
 
                 let stacks_tip = storage
@@ -195,7 +195,7 @@ impl InfoResponse {
                     Ok(Some(local_stacks_chain_tip)) => {
                         self.stacks.signer_tip = Some(ChainTipInfo {
                             block_hash: local_stacks_chain_tip.block_hash,
-                            block_height: *local_stacks_chain_tip.block_height,
+                            block_height: local_stacks_chain_tip.block_height,
                         });
                     }
                     Ok(None) => {
@@ -227,7 +227,7 @@ impl InfoResponse {
                 self.bitcoin.node_chain = Some(info.chain.to_string());
                 self.bitcoin.node_tip = Some(ChainTipInfo {
                     block_hash: info.best_block_hash.into(),
-                    block_height: info.blocks,
+                    block_height: info.blocks.into(),
                 });
             }
             Err(error) => {
@@ -256,7 +256,7 @@ impl InfoResponse {
             Ok(tenure_info) => {
                 self.stacks.node_tip = Some(ChainTipInfo {
                     block_hash: tenure_info.tip_block_id,
-                    block_height: tenure_info.tip_height,
+                    block_height: tenure_info.tip_height.into(),
                 });
             }
             Err(error) => {
@@ -476,14 +476,14 @@ mod tests {
             panic!("expected local bitcoin tip to be present");
         };
         assert_eq!(bitcoin_local_tip.block_hash, bitcoin_block.block_hash);
-        assert_eq!(bitcoin_local_tip.block_height, *bitcoin_block.block_height);
+        assert_eq!(bitcoin_local_tip.block_height, bitcoin_block.block_height);
 
         // Assert local stacks tip
         let Some(stacks_local_tip) = result.stacks.signer_tip else {
             panic!("expected local stacks tip to be present");
         };
         assert_eq!(stacks_local_tip.block_hash, stacks_block.block_hash);
-        assert_eq!(stacks_local_tip.block_height, *stacks_block.block_height);
+        assert_eq!(stacks_local_tip.block_height, stacks_block.block_height);
     }
 
     #[tokio::test]
@@ -551,7 +551,7 @@ mod tests {
         );
         assert_eq!(
             bitcoin_node_tip.block_height,
-            get_blockchain_info_response.blocks
+            get_blockchain_info_response.blocks.into()
         );
         assert_eq!(
             result.bitcoin.node_chain,
@@ -626,7 +626,7 @@ mod tests {
         );
         assert_eq!(
             stacks_node_tip.block_height,
-            TENURE_INFO_RESPONSE.tip_height
+            TENURE_INFO_RESPONSE.tip_height.into()
         );
         assert_eq!(
             result.stacks.node_bitcoin_block_height,

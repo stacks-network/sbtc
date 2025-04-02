@@ -803,7 +803,7 @@ async fn next_headers_to_process_gets_all_headers() {
     assert_eq!(headers, sorted_headers);
 
     let start_height = ctx.state().get_sbtc_bitcoin_start_height();
-    assert_eq!(start_height, START_HEIGHT);
+    assert_eq!(start_height, START_HEIGHT.into());
     assert_eq!(START_HEIGHT, *headers[0].height);
     assert_eq!(headers.last().map(|header| header.hash), Some(chain_tip));
 

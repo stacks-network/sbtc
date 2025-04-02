@@ -306,11 +306,11 @@ impl<C: Context, B> BlockObserver<C, B> {
 
             // We don't even try to write blocks to the database if the
             // height is less than the start height.
-            if header.height < start_height.into() {
+            if header.height < start_height {
                 break;
             }
 
-            let at_start_height = header.height == start_height.into();
+            let at_start_height = header.height == start_height;
             block_hash = header.previous_block_hash;
             headers.push_front(header);
 

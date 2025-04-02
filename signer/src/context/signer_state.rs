@@ -117,8 +117,8 @@ impl SignerState {
     }
 
     /// Get the sbtc start height
-    pub fn get_sbtc_bitcoin_start_height(&self) -> u64 {
-        self.sbtc_bitcoin_start_height.load(Ordering::SeqCst)
+    pub fn get_sbtc_bitcoin_start_height(&self) -> BitcoinBlockHeight {
+        self.sbtc_bitcoin_start_height.load(Ordering::SeqCst).into()
     }
 
     /// Set the sbtc start height
