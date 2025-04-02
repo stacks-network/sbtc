@@ -1,9 +1,5 @@
 use std::time::Duration;
 
-use bitcoin::block::Header;
-use bitcoin::block::Version;
-use bitcoin::consensus::encode::serialize_hex;
-use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::Block;
@@ -12,6 +8,10 @@ use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::TxMerkleNode;
 use bitcoin::Txid;
+use bitcoin::block::Header;
+use bitcoin::block::Version;
+use bitcoin::consensus::encode::serialize_hex;
+use bitcoin::hashes::Hash as _;
 use bitcoincore_rpc_json::Utxo;
 use fake::Fake as _;
 use futures::future::join_all;
@@ -42,11 +42,11 @@ use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
 use signer::network;
 use signer::stacks::api::TenureBlocks;
+use signer::storage::DbRead;
+use signer::storage::DbWrite;
 use signer::storage::model;
 use signer::storage::model::DepositSigner;
 use signer::storage::model::TransactionType;
-use signer::storage::DbRead;
-use signer::storage::DbWrite;
 use signer::testing;
 use signer::testing::context::BuildContext;
 use signer::testing::context::ConfigureBitcoinClient;
@@ -438,12 +438,14 @@ async fn deposit_flow() {
     // There shouldn't be any request yet
     let signer_public_key = PublicKey::from_private_key(&context.config().signer.private_key);
     let chain_tip = bitcoin_chain_tip.block_hash;
-    assert!(context
-        .get_storage()
-        .get_pending_deposit_requests(&chain_tip, context_window as u16, &signer_public_key)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        context
+            .get_storage()
+            .get_pending_deposit_requests(&chain_tip, context_window as u16, &signer_public_key)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // Create deposit in Emily
     deposit_api::create_deposit(emily_client.config(), emily_request.clone())
@@ -470,12 +472,14 @@ async fn deposit_flow() {
     );
     // and that now we have the deposit request
     let deposit_block = deposit_block_hash.into();
-    assert!(!context
-        .get_storage()
-        .get_pending_deposit_requests(&deposit_block, context_window as u16, &signer_public_key)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        !context
+            .get_storage()
+            .get_pending_deposit_requests(&deposit_block, context_window as u16, &signer_public_key)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let stacks_tip = context
         .get_storage()

@@ -1,7 +1,7 @@
 //! Test utilities for the `network` module
 
-use libp2p::{multiaddr::Protocol, Multiaddr};
-use rand::{rngs::OsRng, RngCore};
+use libp2p::{Multiaddr, multiaddr::Protocol};
+use rand::{RngCore, rngs::OsRng};
 
 use crate::{keys::PrivateKey, network};
 

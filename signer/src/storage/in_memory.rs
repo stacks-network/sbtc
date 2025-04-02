@@ -1,7 +1,7 @@
 //! In-memory store implementation - useful for tests
 
-use bitcoin::consensus::Decodable as _;
 use bitcoin::OutPoint;
+use bitcoin::consensus::Decodable as _;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -11,6 +11,7 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
+use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::WithdrawalRequestReport;
@@ -22,7 +23,6 @@ use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
-use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 use super::model::DkgSharesStatus;
 use super::util::get_utxo;

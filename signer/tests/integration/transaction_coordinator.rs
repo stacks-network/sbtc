@@ -2,19 +2,19 @@ use std::collections::BTreeSet;
 use std::num::NonZeroU32;
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
-use bitcoin::consensus::Encodable as _;
-use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Transaction;
+use bitcoin::consensus::Encodable as _;
+use bitcoin::hashes::Hash as _;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
@@ -25,29 +25,29 @@ use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use clarity::types::chainstate::StacksAddress;
 use clarity::types::chainstate::StacksBlockId;
+use clarity::vm::Value as ClarityValue;
 use clarity::vm::types::PrincipalData;
 use clarity::vm::types::SequenceData;
 use clarity::vm::types::StandardPrincipalData;
-use clarity::vm::Value as ClarityValue;
 use emily_client::apis::deposit_api;
 use fake::Fake as _;
 use fake::Faker;
 use futures::StreamExt as _;
 use lru::LruCache;
 use mockito;
-use rand::rngs::OsRng;
 use rand::SeedableRng as _;
+use rand::rngs::OsRng;
 use reqwest;
 use sbtc::testing::regtest;
-use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use sbtc::testing::regtest::AsUtxo as _;
 use sbtc::testing::regtest::Recipient;
+use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use secp256k1::Keypair;
+use signer::bitcoin::BitcoinInteract as _;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::utxo::BitcoinInputsOutputs;
 use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::validation::WithdrawalValidationResult;
-use signer::bitcoin::BitcoinInteract as _;
 use signer::context::RequestDeciderEvent;
 use signer::message::Payload;
 use signer::network::MessageTransfer;
@@ -58,6 +58,8 @@ use testing_emily_client::apis::withdrawal_api;
 use testing_emily_client::models::Chainstate;
 use testing_emily_client::models::Status as TestingEmilyStatus;
 
+use signer::WITHDRAWAL_BLOCKS_EXPIRY;
+use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 use signer::context::SbtcLimits;
 use signer::context::TxCoordinatorEvent;
 use signer::keys::PrivateKey;
@@ -70,6 +72,8 @@ use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::contracts::SmartContract;
+use signer::storage::DbRead;
+use signer::storage::DbWrite;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
 use signer::storage::model::BitcoinTxSigHash;
@@ -77,18 +81,14 @@ use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::WithdrawalRequest;
 use signer::storage::postgres::PgStore;
-use signer::storage::DbRead;
-use signer::storage::DbWrite;
+use signer::testing::IterTestExt;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::storage::DbReadTestExt;
 use signer::testing::storage::DbWriteTestExt;
 use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerInfo;
-use signer::testing::IterTestExt;
 use signer::transaction_coordinator::given_key_is_coordinator;
-use signer::WITHDRAWAL_BLOCKS_EXPIRY;
-use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
@@ -126,10 +126,6 @@ use signer::transaction_signer::TxSignerEventLoop;
 use tokio::sync::broadcast::Sender;
 
 use crate::complete_deposit::make_complete_deposit;
-use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::fetch_canonical_bitcoin_blockchain;
-use crate::setup::set_deposit_completed;
-use crate::setup::set_deposit_incomplete;
 use crate::setup::AsBlockRef as _;
 use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::SweepAmounts;
@@ -137,6 +133,10 @@ use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
 use crate::setup::WithdrawalTriple;
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::fetch_canonical_bitcoin_blockchain;
+use crate::setup::set_deposit_completed;
+use crate::setup::set_deposit_incomplete;
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
@@ -4103,12 +4103,14 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     db.write_withdrawal_request(&request).await.unwrap();
 
     // The request should not be pending yet (missing enough confirmation)
-    assert!(context
-        .get_storage()
-        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, context_window)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        context
+            .get_storage()
+            .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, context_window)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let new_tip = faucet
         .generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1)
@@ -4446,6 +4448,7 @@ mod get_eligible_pending_withdrawal_requests {
     use test_case::test_case;
 
     use signer::{
+        WITHDRAWAL_DUST_LIMIT,
         bitcoin::MockBitcoinInteract,
         emily_client::MockEmilyInteract,
         network::in_memory2::SignerNetworkInstance,
@@ -4455,7 +4458,6 @@ mod get_eligible_pending_withdrawal_requests {
             storage::{DbReadTestExt as _, DbWriteTestExt as _},
         },
         transaction_coordinator::{GetPendingRequestsParams, TxCoordinatorEventLoop},
-        WITHDRAWAL_DUST_LIMIT,
     };
 
     use super::*;

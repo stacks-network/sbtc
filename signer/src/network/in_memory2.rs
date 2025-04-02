@@ -176,8 +176,8 @@ impl MessageTransfer for SignerNetworkInstance {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU16, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU16, Ordering};
 
     use futures::future::join_all;
     use rand::rngs::OsRng;
