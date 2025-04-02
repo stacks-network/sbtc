@@ -1,19 +1,10 @@
 use std::cmp::Ordering;
 
 use testing_emily_client::apis;
-use testing_emily_client::apis::configuration::Configuration;
 use testing_emily_client::models::Chainstate;
 
-use crate::common::clean_setup;
+use crate::common::{batch_set_chainstates, clean_setup, new_test_chainstate};
 use test_case::test_case;
-
-/// Make a test chainstate.
-fn new_test_chainstate(height: u64, fork_id: i32) -> Chainstate {
-    Chainstate {
-        stacks_block_hash: format!("test-hash-{height}-fork-{fork_id}"),
-        stacks_block_height: height,
-    }
-}
 
 /// An arbitrary fully ordered partial cmp comparator for Chainstate.
 /// This is useful for sorting vectors of chainstates so that vectors with
@@ -26,22 +17,6 @@ fn arbitrary_chainstate_partial_cmp(a: &Chainstate, b: &Chainstate) -> Ordering 
         .expect("Failed to compare two strings that should be comparable")
 }
 
-/// Makes a bunch of chainstates.
-async fn batch_set_chainstates(
-    configuration: &Configuration,
-    create_requests: Vec<Chainstate>,
-) -> Vec<Chainstate> {
-    let mut created: Vec<Chainstate> = Vec::with_capacity(create_requests.len());
-    for request in create_requests {
-        created.push(
-            apis::chainstate_api::set_chainstate(&configuration, request)
-                .await
-                .expect("Received an error after making a valid create deposit request api call."),
-        );
-    }
-    created
-}
-
 #[test_case(1123, 1128; "create-5-chainstates")]
 #[tokio::test]
 async fn create_and_get_chainstate_happy_path(min_height: u64, max_height: u64) {
@@ -50,10 +25,10 @@ async fn create_and_get_chainstate_happy_path(min_height: u64, max_height: u64) 
     // Arrange.
     // --------
     let mut expected_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
-        .map(|height| new_test_chainstate(height, 0))
+        .map(|height| new_test_chainstate(height, height, 0))
         .collect();
 
-    let expected_chaintip = new_test_chainstate(max_height, 0);
+    let expected_chaintip = new_test_chainstate(max_height, max_height, 0);
 
     // Act.
     // --------
@@ -99,10 +74,10 @@ async fn create_and_get_chainstate_reorg_happy_path(
     // Arrange.
     // --------
     let original_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
-        .map(|height| new_test_chainstate(height, 0))
+        .map(|height| new_test_chainstate(height, height, 0))
         .collect();
 
-    let expected_post_reorg_chaintip = new_test_chainstate(reorg_height, 1);
+    let expected_post_reorg_chaintip = new_test_chainstate(reorg_height, reorg_height, 1);
 
     // Act.
     // --------
@@ -131,10 +106,10 @@ async fn create_and_replay_does_not_initiate_reorg(min_height: u64, max_height: 
     // Arrange.
     // --------
     let mut expected_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
-        .map(|height| new_test_chainstate(height, 0))
+        .map(|height| new_test_chainstate(height, height, 0))
         .collect();
 
-    let expected_chaintip = new_test_chainstate(max_height, 0);
+    let expected_chaintip = new_test_chainstate(max_height, max_height, 0);
 
     // Act.
     // --------
