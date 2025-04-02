@@ -1,6 +1,6 @@
 use blockstack_lib::types::chainstate::StacksAddress;
-use rand::rngs::OsRng;
 use rand::SeedableRng;
+use rand::rngs::OsRng;
 
 use sbtc::testing::regtest::BitcoinCoreRegtestExt;
 use sbtc_docker_testing::images::BitcoinCore;
@@ -19,13 +19,13 @@ use fake::Fake;
 use signer::testing::docker::BitcoinCoreTestExt;
 use signer::DEPOSIT_DUST_LIMIT;
 
-use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::set_deposit_completed;
-use crate::setup::set_deposit_incomplete;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::set_deposit_completed;
+use crate::setup::set_deposit_incomplete;
 
 /// Create a "proper" [`CompleteDepositV1`] object and context with the
 /// given information. If the information here is correct then the returned

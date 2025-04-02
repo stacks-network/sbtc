@@ -3,9 +3,9 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::LazyLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::LazyLock;
 
 use blockstack_lib::address::C32_ADDRESS_VERSION_MAINNET_MULTISIG;
 use blockstack_lib::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
@@ -22,9 +22,10 @@ use blockstack_lib::core::CHAIN_ID_TESTNET;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util::secp256k1::Secp256k1PublicKey;
 use rand::SeedableRng as _;
-use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
+use secp256k1::ecdsa::RecoverableSignature;
 
+use crate::MAX_KEYS;
 use crate::config::NetworkKind;
 use crate::config::SignerConfig;
 use crate::context::Context;
@@ -34,9 +35,8 @@ use crate::keys::PublicKey;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsTxPayload;
-use crate::storage::model::BitcoinBlockHash;
 use crate::storage::DbRead;
-use crate::MAX_KEYS;
+use crate::storage::model::BitcoinBlockHash;
 
 /// Stacks multisig addresses are Hash160 hashes of bitcoin Scripts (more
 /// or less). The enum value below defines which Script will be used to
@@ -440,9 +440,9 @@ mod tests {
     use blockstack_lib::chainstate::stacks::TransactionPayload;
     use blockstack_lib::clarity::vm::Value as ClarityValue;
     use fake::Fake;
+    use rand::SeedableRng as _;
     use rand::rngs::OsRng;
     use rand::seq::SliceRandom;
-    use rand::SeedableRng as _;
     use secp256k1::Keypair;
     use secp256k1::SECP256K1;
 
@@ -453,10 +453,10 @@ mod tests {
     use crate::signature::sign_stacks_tx;
     use crate::stacks::contracts::AsContractCall;
     use crate::stacks::contracts::ReqContext;
+    use crate::storage::DbWrite;
     use crate::storage::model;
     use crate::storage::model::RotateKeysTransaction;
     use crate::storage::model::StacksPrincipal;
-    use crate::storage::DbWrite;
     use crate::testing::context::ConfigureMockedClients;
     use crate::testing::context::TestContext;
     use crate::testing::context::*;

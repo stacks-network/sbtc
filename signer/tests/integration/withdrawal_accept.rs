@@ -17,12 +17,12 @@ use rand::SeedableRng;
 use signer::testing::context::*;
 use signer::testing::docker::BitcoinCoreTestExt;
 
-use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::set_withdrawal_completed;
-use crate::setup::set_withdrawal_incomplete;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup2;
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::set_withdrawal_completed;
+use crate::setup::set_withdrawal_incomplete;
 
 const WITHDRAWAL_AMOUNT: [SweepAmounts; 1] = [SweepAmounts {
     amount: 700_000,

@@ -2,11 +2,11 @@ use std::str::FromStr;
 
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::hex::DisplayHex;
-use bitcoin::{
-    absolute, transaction::Version, Amount, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut,
-};
 use bitcoin::{Address, XOnlyPublicKey};
-use bitcoincore_rpc::{json, Client as BitcoinClient, RpcApi as _};
+use bitcoin::{
+    Amount, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, absolute, transaction::Version,
+};
+use bitcoincore_rpc::{Client as BitcoinClient, RpcApi as _, json};
 use blockstack_lib::chainstate::stacks::address::{PoxAddressType20, PoxAddressType32};
 use blockstack_lib::chainstate::stacks::{
     SinglesigHashMode, SinglesigSpendingCondition, StacksTransaction, TokenTransferMemo,
@@ -16,11 +16,11 @@ use blockstack_lib::chainstate::stacks::{
 use clap::{Args, Parser, Subcommand};
 use clarity::consts::{CHAIN_ID_MAINNET, CHAIN_ID_TESTNET};
 use clarity::util::secp256k1::MessageSignature;
-use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
+use clarity::vm::types::TupleData;
 use clarity::{
-    types::{chainstate::StacksAddress, Address as _},
+    types::{Address as _, chainstate::StacksAddress},
     vm::types::{PrincipalData, StandardPrincipalData},
 };
 use config::ConfigError;
@@ -35,7 +35,7 @@ use sbtc::deposits::{DepositScriptInputs, ReclaimScriptInputs};
 use signer::config::Settings;
 use signer::context::Context as SignerCtx;
 use signer::keys::{PrivateKey, PublicKey, SignerScriptPubKey};
-use signer::signature::{sign_stacks_tx, RecoverableEcdsaSignature as _};
+use signer::signature::{RecoverableEcdsaSignature as _, sign_stacks_tx};
 use signer::stacks::api::{StacksClient, StacksInteract};
 use signer::stacks::contracts::{AsContractCall, AsTxPayload as _, ReqContext};
 use stacks_common::address::{

@@ -326,7 +326,7 @@ export class EmilyStack extends cdk.Stack {
         pointInTimeRecovery: undefined | boolean,
     ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
-        return new dynamodb.Table(this, tableId, {
+        const table =  new dynamodb.Table(this, tableId, {
             tableName: tableName,
             partitionKey: {
                 name: 'Height',
@@ -340,6 +340,23 @@ export class EmilyStack extends cdk.Stack {
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
             pointInTimeRecovery: pointInTimeRecovery,
         });
+        const byBitcoinHeight: string = "BitcoinBlockHeightIndex";
+        table.addGlobalSecondaryIndex({
+            indexName: byBitcoinHeight,
+            partitionKey: {
+                name: 'BitcoinHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            sortKey: {
+                name: 'Height',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "Hash",
+            ]
+        });
+        return table;
     }
 
     /**

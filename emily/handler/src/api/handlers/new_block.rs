@@ -4,8 +4,8 @@ use std::future::Future;
 use tracing::instrument;
 use warp::reply::Reply;
 
-use clarity::vm::types::QualifiedContractIdentifier;
 use clarity::vm::ContractName;
+use clarity::vm::types::QualifiedContractIdentifier;
 use sbtc::events::{
     CompletedDepositEvent, RegistryEvent, TxInfo, WithdrawalAcceptEvent, WithdrawalCreateEvent,
     WithdrawalRejectEvent,
@@ -19,10 +19,10 @@ use crate::api::models::common::Fulfillment;
 use crate::api::models::common::Status;
 use crate::api::models::deposit::requests::{DepositUpdate, UpdateDepositsRequestBody};
 use crate::api::models::new_block::NewBlockEventRaw;
+use crate::api::models::withdrawal::WithdrawalParameters;
 use crate::api::models::withdrawal::requests::{
     CreateWithdrawalRequestBody, UpdateWithdrawalsRequestBody, WithdrawalUpdate,
 };
-use crate::api::models::withdrawal::WithdrawalParameters;
 use crate::database::entries::deposit::DepositEntryKey;
 use crate::{common::error::Error, context::EmilyContext, database::accessors};
 
@@ -114,6 +114,7 @@ pub async fn new_block(
                 Chainstate {
                     stacks_block_height: stacks_chaintip.block_height,
                     stacks_block_hash: stacks_chaintip.block_hash.clone(),
+                    bitcoin_block_height: Some(new_block_event.burn_block_height as u64),
                 },
             ),
             "failed to update chainstate in Emily",
@@ -381,10 +382,11 @@ mod test {
 
     use super::*;
     use bitcoin::{
+        BlockHash, OutPoint, ScriptBuf, Txid,
         hashes::Hash,
         hex::DisplayHex,
         key::rand::{random, rngs::OsRng},
-        secp256k1, BlockHash, OutPoint, ScriptBuf, Txid,
+        secp256k1,
     };
     use clarity::{
         types::chainstate::StacksBlockId,
