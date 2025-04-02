@@ -40,7 +40,7 @@ long-lived secrets: [^GHCR]
 
 [^GHCR]:
     Since April 2025, sBTC Docker images are now available in GitHub
-    [Container registry][3], as it allows authenticating through OICC instead of
+    [Container registry][3], as it allows authenticating through OIDC instead of
     hardcoded credentials (as required in DockerHub).
 
 All artifacts MUST be [attested][4] so that their build provenance can be
