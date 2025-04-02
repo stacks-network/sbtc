@@ -6,7 +6,7 @@ use std::{
 };
 
 use secp256k1::XOnlyPublicKey;
-use wsts::state_machine::{coordinator::Coordinator, OperationResult, SignError};
+use wsts::state_machine::{OperationResult, SignError, coordinator::Coordinator};
 
 use crate::{
     keys::PublicKey,

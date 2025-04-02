@@ -7,11 +7,11 @@ use bitcoin::hashes::Hash as _;
 use fake::Fake;
 
 use crate::keys::PublicKey;
+use crate::storage::DbWrite;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlock;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinBlockRef;
-use crate::storage::DbWrite;
 use crate::testing::dummy::DepositTxConfig;
 
 use rand::seq::SliceRandom;

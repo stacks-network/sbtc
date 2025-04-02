@@ -6,15 +6,15 @@ use bitcoincore_rpc::RpcApi;
 use fake::Fake as _;
 use fake::Faker;
 use lru::LruCache;
-use rand::rngs::OsRng;
 use rand::SeedableRng as _;
+use rand::rngs::OsRng;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::emily_client::MockEmilyInteract;
 use signer::network::in_memory2::SignerNetworkInstance;
 use signer::stacks::api::MockStacksInteract;
-use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
 use signer::storage::DbWrite;
+use signer::storage::postgres::PgStore;
 use test_case::test_case;
 
 use signer::bitcoin::utxo::RequestRef;
@@ -31,9 +31,9 @@ use signer::message::BitcoinPreSignRequest;
 use signer::message::StacksTransactionSignRequest;
 use signer::message::WstsMessage;
 use signer::message::WstsMessageId;
-use signer::network::in_memory2::WanNetwork;
 use signer::network::InMemoryNetwork;
 use signer::network::MessageTransfer;
+use signer::network::in_memory2::WanNetwork;
 use signer::stacks::contracts::ContractCall;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
@@ -52,14 +52,14 @@ use signer::wsts_state_machine::StateMachineId;
 use wsts::net::DkgBegin;
 use wsts::net::NonceRequest;
 
-use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::fill_signers_utxo;
-use crate::setup::set_deposit_incomplete;
-use crate::setup::set_verification_status;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::fill_signers_utxo;
+use crate::setup::set_deposit_incomplete;
+use crate::setup::set_verification_status;
 
 type MockedTxSigner = TxSignerEventLoop<
     TestContext<

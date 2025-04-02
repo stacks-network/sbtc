@@ -29,25 +29,29 @@ use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostCondition;
 use blockstack_lib::chainstate::stacks::TransactionPostConditionMode;
 use blockstack_lib::chainstate::stacks::TransactionSmartContract;
+use blockstack_lib::clarity::vm::ClarityName;
+use blockstack_lib::clarity::vm::ContractName;
+use blockstack_lib::clarity::vm::Value as ClarityValue;
+use blockstack_lib::clarity::vm::types::BUFF_33;
 use blockstack_lib::clarity::vm::types::BuffData;
 use blockstack_lib::clarity::vm::types::ListData;
 use blockstack_lib::clarity::vm::types::ListTypeData;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::SequenceData;
-use blockstack_lib::clarity::vm::types::BUFF_33;
-use blockstack_lib::clarity::vm::ClarityName;
-use blockstack_lib::clarity::vm::ContractName;
-use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util_lib::strings::StacksString;
 use clarity::vm::ClarityVersion;
 
-use crate::bitcoin::validation::WithdrawalRequestStatus;
+use crate::DEPOSIT_DUST_LIMIT;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
+use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 use crate::bitcoin::BitcoinInteract;
+use crate::bitcoin::validation::WithdrawalRequestStatus;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::DbRead;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
@@ -55,10 +59,6 @@ use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::ToLittleEndianOrder as _;
-use crate::storage::DbRead;
-use crate::DEPOSIT_DUST_LIMIT;
-use crate::WITHDRAWAL_BLOCKS_EXPIRY;
-use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use super::api::StacksInteract;
 
@@ -1555,10 +1555,10 @@ impl SmartContract {
 #[cfg(test)]
 mod tests {
     use fake::Fake as _;
-    use rand::rngs::StdRng;
     use rand::SeedableRng as _;
-    use secp256k1::SecretKey;
+    use rand::rngs::StdRng;
     use secp256k1::SECP256K1;
+    use secp256k1::SecretKey;
 
     use crate::config::NetworkKind;
     use crate::storage::model::StacksBlockHash;

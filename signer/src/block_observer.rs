@@ -21,31 +21,31 @@ use std::collections::BTreeSet;
 use std::future::Future;
 use std::time::Duration;
 
+use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::utxo::TxDeconstructor as _;
-use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::SbtcLimits;
 use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PublicKey;
-use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
+use crate::metrics::Metrics;
 use crate::stacks::api::GetNakamotoStartHeight as _;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
-use crate::storage::model;
-use crate::storage::model::EncryptedDkgShares;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
-use bitcoin::hashes::Hash as _;
+use crate::storage::model;
+use crate::storage::model::EncryptedDkgShares;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
+use bitcoin::hashes::Hash as _;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
@@ -1029,10 +1029,12 @@ mod tests {
         let db_outpoint: (BitcoinTxId, u32) = (tx_setup0.tx.compute_txid().into(), 0);
         assert!(storage.deposit_requests.get(&db_outpoint).is_some());
 
-        assert!(storage
-            .bitcoin_transactions_to_blocks
-            .get(&db_outpoint.0)
-            .is_some());
+        assert!(
+            storage
+                .bitcoin_transactions_to_blocks
+                .get(&db_outpoint.0)
+                .is_some()
+        );
         assert_eq!(
             storage
                 .raw_transactions
