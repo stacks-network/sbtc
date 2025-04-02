@@ -15,18 +15,18 @@ use blockstack_lib::{
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use emily_client::models::Status;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 use tokio::time::error::Elapsed;
 
-use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::GetTransactionFeeResult;
+use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::context::SbtcLimits;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model::BitcoinTxId;
 use crate::{
     bitcoin::{
-        rpc::GetTxResponse, utxo::UnsignedTransaction, BitcoinInteract, MockBitcoinInteract,
+        BitcoinInteract, MockBitcoinInteract, rpc::GetTxResponse, utxo::UnsignedTransaction,
     },
     config::Settings,
     context::{Context, SignerContext, SignerSignal, SignerState, TerminationHandle},
@@ -38,9 +38,8 @@ use crate::{
         contracts::AsTxPayload,
     },
     storage::{
-        in_memory::{SharedStore, Store},
-        model::StacksBlock,
         DbRead, DbWrite,
+        in_memory::{SharedStore, Store},
     },
 };
 
@@ -541,24 +540,18 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
     async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
-        self.inner
-            .lock()
-            .await
-            .accept_deposits(transaction, stacks_chain_tip)
-            .await
+        self.inner.lock().await.accept_deposits(transaction).await
     }
 
     async fn accept_withdrawals<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
         self.inner
             .lock()
             .await
-            .accept_withdrawals(transaction, stacks_chain_tip)
+            .accept_withdrawals(transaction)
             .await
     }
 
@@ -911,8 +904,8 @@ where
 mod tests {
     use std::{
         sync::{
-            atomic::{AtomicBool, AtomicU8, Ordering},
             Arc,
+            atomic::{AtomicBool, AtomicU8, Ordering},
         },
         time::Duration,
     };

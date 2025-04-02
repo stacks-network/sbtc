@@ -553,6 +553,12 @@ pub trait DbWrite {
         output: &model::TxOutput,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
+    /// Write the withdrawal bitcoin transaction output to the database.
+    fn write_withdrawal_tx_output(
+        &self,
+        output: &model::WithdrawalTxOutput,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
     /// Write the bitcoin transaction input to the database.
     fn write_tx_prevout(
         &self,

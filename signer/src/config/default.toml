@@ -35,7 +35,7 @@
 # Environment: SIGNER_EMILY__ENDPOINTS
 # Environment Example: '"https://1234567890abcdef@api.emilyexample.com",..'
 endpoints = [
-    "http://testApiKey@localhost:3031",
+    "http://testApiKey@127.0.0.1:3031",
 ]
 
 # The pagination timeout, in seconds, used to fetch deposits requests from Emily.
@@ -58,7 +58,7 @@ endpoints = [
 # Environment: SIGNER_BITCOIN__RPC_ENDPOINTS
 # Environment Example: http://user:pass@seed-1:4122,http://foo:bar@seed-2:4122
 rpc_endpoints = [
-    "http://devnet:devnet@localhost:18443",
+    "http://devnet:devnet@127.0.0.1:18443",
 ]
 
 # The URI(s) of the Bitcoin Core ZMQ block hash stream(s) to connect to.
@@ -73,7 +73,7 @@ rpc_endpoints = [
 # Environment: SIGNER_BITCOIN__BLOCK_HASH_STREAM_ENDPOINTS
 # Environment Example: tcp://10.0.0.1:28332,tcp://10.0.0.2:28332
 block_hash_stream_endpoints = [
-    "tcp://localhost:28332"
+    "tcp://127.0.0.1:28332"
 ]
 
 # !! ==============================================================================
@@ -83,7 +83,7 @@ block_hash_stream_endpoints = [
 # The RPC URL(s) of the Stacks node(s) to connect to. At least one must be
 # provided. If multiple nodes are provided they will be tried in order when
 # making requests.
-endpoints = ["http://localhost:20443"]
+endpoints = ["http://127.0.0.1:20443"]
 
 # !! ==============================================================================
 # !! Signer Configuration
@@ -125,7 +125,7 @@ deployer = "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"
 #
 # Required: true
 # Environment: SIGNER_SIGNER__DB_ENDPOINT
-db_endpoint = "postgresql://postgres:postgres@localhost:5432/signer"
+db_endpoint = "postgresql://postgres:postgres@127.0.0.1:5432/signer"
 
 # A complete list of (compressed) public keys for known bootstrap signer
 # peers who are approved to be in the sBTC signer set.

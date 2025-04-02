@@ -2,19 +2,19 @@ use std::collections::BTreeSet;
 use std::num::NonZeroU32;
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
-use bitcoin::consensus::Encodable as _;
-use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Transaction;
+use bitcoin::consensus::Encodable as _;
+use bitcoin::hashes::Hash as _;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
@@ -25,36 +25,41 @@ use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use clarity::types::chainstate::StacksAddress;
 use clarity::types::chainstate::StacksBlockId;
+use clarity::vm::Value as ClarityValue;
 use clarity::vm::types::PrincipalData;
 use clarity::vm::types::SequenceData;
 use clarity::vm::types::StandardPrincipalData;
-use clarity::vm::Value as ClarityValue;
 use emily_client::apis::deposit_api;
 use fake::Fake as _;
 use fake::Faker;
 use futures::StreamExt as _;
 use lru::LruCache;
 use mockito;
-use rand::rngs::OsRng;
 use rand::SeedableRng as _;
+use rand::rngs::OsRng;
 use reqwest;
 use sbtc::testing::regtest;
-use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use sbtc::testing::regtest::AsUtxo as _;
 use sbtc::testing::regtest::Recipient;
+use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use secp256k1::Keypair;
+use signer::bitcoin::BitcoinInteract as _;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::utxo::BitcoinInputsOutputs;
 use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::validation::WithdrawalValidationResult;
-use signer::bitcoin::BitcoinInteract as _;
 use signer::context::RequestDeciderEvent;
 use signer::message::Payload;
 use signer::network::MessageTransfer;
+use signer::storage::model::WithdrawalTxOutput;
+use testing_emily_client::apis::chainstate_api;
 use testing_emily_client::apis::testing_api;
 use testing_emily_client::apis::withdrawal_api;
+use testing_emily_client::models::Chainstate;
 use testing_emily_client::models::Status as TestingEmilyStatus;
 
+use signer::WITHDRAWAL_BLOCKS_EXPIRY;
+use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 use signer::context::SbtcLimits;
 use signer::context::TxCoordinatorEvent;
 use signer::keys::PrivateKey;
@@ -67,6 +72,8 @@ use signer::stacks::contracts::AsContractCall;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::contracts::SmartContract;
+use signer::storage::DbRead;
+use signer::storage::DbWrite;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
 use signer::storage::model::BitcoinTxSigHash;
@@ -74,18 +81,14 @@ use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::WithdrawalRequest;
 use signer::storage::postgres::PgStore;
-use signer::storage::DbRead;
-use signer::storage::DbWrite;
+use signer::testing::IterTestExt;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::storage::DbReadTestExt;
 use signer::testing::storage::DbWriteTestExt;
 use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerInfo;
-use signer::testing::IterTestExt;
 use signer::transaction_coordinator::given_key_is_coordinator;
-use signer::WITHDRAWAL_BLOCKS_EXPIRY;
-use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
@@ -123,10 +126,6 @@ use signer::transaction_signer::TxSignerEventLoop;
 use tokio::sync::broadcast::Sender;
 
 use crate::complete_deposit::make_complete_deposit;
-use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::fetch_canonical_bitcoin_blockchain;
-use crate::setup::set_deposit_completed;
-use crate::setup::set_deposit_incomplete;
 use crate::setup::AsBlockRef as _;
 use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::SweepAmounts;
@@ -134,6 +133,10 @@ use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
 use crate::setup::WithdrawalTriple;
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::fetch_canonical_bitcoin_blockchain;
+use crate::setup::set_deposit_completed;
+use crate::setup::set_deposit_incomplete;
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
@@ -3204,7 +3207,14 @@ async fn test_conservative_initial_sbtc_limits() {
                 .returning(|| Box::pin(std::future::ready(Ok(vec![]))));
 
             // We don't care about this
-            client.expect_accept_deposits().returning(|_, _| {
+            client.expect_accept_deposits().returning(|_| {
+                Box::pin(std::future::ready(Err(Error::InvalidStacksResponse(
+                    "dummy",
+                ))))
+            });
+
+            // We don't care about this
+            client.expect_accept_withdrawals().returning(|_| {
                 Box::pin(std::future::ready(Err(Error::InvalidStacksResponse(
                     "dummy",
                 ))))
@@ -3492,9 +3502,9 @@ async fn sign_bitcoin_transaction_withdrawals() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
+    let emily_config = emily_client.config().as_testing();
+
+    testing_api::wipe_databases(&emily_config).await.unwrap();
 
     let network = WanNetwork::default();
 
@@ -3766,7 +3776,6 @@ async fn sign_bitcoin_transaction_withdrawals() {
         txid: StacksTxId::from([123; 32]),
         sender_address: PrincipalData::from(StandardPrincipalData::transient()).into(),
     };
-
     // Now we should manually put withdrawal request to Emily, pretending that
     // sidecar did it.
     let stacks_tip_height = db
@@ -3775,6 +3784,19 @@ async fn sign_bitcoin_transaction_withdrawals() {
         .unwrap()
         .unwrap()
         .block_height;
+
+    // Set the chainstate to Emily before we create the withdrawal request
+    chainstate_api::set_chainstate(
+        &emily_config,
+        Chainstate {
+            stacks_block_hash: stacks_chain_tip.to_string(),
+            stacks_block_height: stacks_tip_height,
+            bitcoin_block_height: Some(Some(0)), // TODO: maybe we will want to have here some sensible data.
+        },
+    )
+    .await
+    .expect("Failed to set chainstate");
+
     let request_body = testing_emily_client::models::CreateWithdrawalRequestBody {
         amount: withdrawal_request.amount,
         parameters: Box::new(testing_emily_client::models::WithdrawalParameters {
@@ -3785,21 +3807,25 @@ async fn sign_bitcoin_transaction_withdrawals() {
         sender: withdrawal_request.sender_address.to_string(),
         stacks_block_hash: withdrawal_request.block_hash.to_string(),
         stacks_block_height: stacks_tip_height,
+        txid: withdrawal_request.txid.to_string(),
     };
-    let response =
-        withdrawal_api::create_withdrawal(&emily_client.config().as_testing(), request_body).await;
+    let response = withdrawal_api::create_withdrawal(&emily_config, request_body).await;
     assert!(response.is_ok());
     // Check that there is no Accepted requests on emily before we broadcast them
-    let withdrawals_on_emily = withdrawal_api::get_withdrawals(
-        &emily_client.config().as_testing(),
-        TestingEmilyStatus::Accepted,
-        None,
-        None,
-    )
-    .await
-    .unwrap()
-    .withdrawals;
+    let withdrawals_on_emily =
+        withdrawal_api::get_withdrawals(&emily_config, TestingEmilyStatus::Accepted, None, None)
+            .await
+            .unwrap()
+            .withdrawals;
     assert!(withdrawals_on_emily.is_empty());
+
+    // Check that there is no Accepted requests on emily before we broadcast them
+    let withdrawals_on_emily =
+        withdrawal_api::get_withdrawals(&emily_config, TestingEmilyStatus::Pending, None, None)
+            .await
+            .unwrap()
+            .withdrawals;
+    assert_eq!(withdrawals_on_emily.len(), 1);
 
     for (_, db, _, _) in signers.iter() {
         db.write_withdrawal_request(&withdrawal_request)
@@ -3853,15 +3879,11 @@ async fn sign_bitcoin_transaction_withdrawals() {
     //   amount.
     // =========================================================================
 
-    let withdrawals_on_emily = withdrawal_api::get_withdrawals(
-        &emily_client.config().as_testing(),
-        TestingEmilyStatus::Accepted,
-        None,
-        None,
-    )
-    .await
-    .unwrap()
-    .withdrawals;
+    let withdrawals_on_emily =
+        withdrawal_api::get_withdrawals(&emily_config, TestingEmilyStatus::Accepted, None, None)
+            .await
+            .unwrap()
+            .withdrawals;
 
     assert_eq!(withdrawals_on_emily.len(), 1);
 
@@ -3923,7 +3945,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     let withdrawal_amount = withdrawal_request.amount;
     assert_eq!(tx_info.tx.output[2].value.to_sat(), withdrawal_amount);
 
-    // Lastly we check that out database has the sweep transaction
+    // We check that our database has the sweep transaction
     let tx = sqlx::query_scalar::<_, BitcoinTx>(
         r#"
         SELECT tx
@@ -3935,6 +3957,22 @@ async fn sign_bitcoin_transaction_withdrawals() {
     .fetch_one(ctx.storage.pool())
     .await
     .unwrap();
+
+    // We check that that our database has the withdrawal tx output
+    let withdrawal_output = sqlx::query_as::<_, WithdrawalTxOutput>(
+        r#"
+        SELECT txid, output_index, request_id
+        FROM sbtc_signer.bitcoin_withdrawal_tx_outputs
+        WHERE txid = $1
+        "#,
+    )
+    .bind(txid.to_byte_array())
+    .fetch_one(ctx.storage.pool())
+    .await
+    .unwrap();
+
+    assert_eq!(withdrawal_output.output_index, 2);
+    assert_eq!(withdrawal_output.request_id, withdrawal_request.request_id);
 
     let script = tx.output[0].script_pubkey.clone().into();
     for (_, db, _, _) in signers {
@@ -4065,12 +4103,14 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     db.write_withdrawal_request(&request).await.unwrap();
 
     // The request should not be pending yet (missing enough confirmation)
-    assert!(context
-        .get_storage()
-        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, context_window)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        context
+            .get_storage()
+            .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, context_window)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let new_tip = faucet
         .generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1)
@@ -4408,6 +4448,7 @@ mod get_eligible_pending_withdrawal_requests {
     use test_case::test_case;
 
     use signer::{
+        WITHDRAWAL_DUST_LIMIT,
         bitcoin::MockBitcoinInteract,
         emily_client::MockEmilyInteract,
         network::in_memory2::SignerNetworkInstance,
@@ -4417,7 +4458,6 @@ mod get_eligible_pending_withdrawal_requests {
             storage::{DbReadTestExt as _, DbWriteTestExt as _},
         },
         transaction_coordinator::{GetPendingRequestsParams, TxCoordinatorEventLoop},
-        WITHDRAWAL_DUST_LIMIT,
     };
 
     use super::*;
@@ -4603,7 +4643,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "insufficient_confirmations_one_too_few")]
     #[test_case(TestParams {
         // This case will calculate the confirmations as:
-        // chain_length (10) - min_confirmations(6) = 4 (maximum block height), 
+        // chain_length (10) - min_confirmations(6) = 4 (maximum block height),
         // at_block_height (4) <= 4.
         chain_length: 10,
         at_block_height: 4,
@@ -4629,7 +4669,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "soft_expiry_one_block_too_old")]
     #[test_case(TestParams {
         // This case will calculate the soft expiry as:
-        // chain_length (10) - expiry_window (10) + expiry_buffer (4) = 4, 
+        // chain_length (10) - expiry_window (10) + expiry_buffer (4) = 4,
         // and at_block_height (4) == 4.
         chain_length: 10,
         expiry_window: 10,
@@ -4640,7 +4680,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "soft_expiry_exact_block_allowed")]
     #[test_case(TestParams {
         // This case will calculate the hard expiry as:
-        // chain_length (10) - expiry_window (5) = 5, 
+        // chain_length (10) - expiry_window (5) = 5,
         // and at_block_height (5) == 5
         chain_length: 10,
         expiry_window: 5,
@@ -4651,7 +4691,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "hard_expiry_exact_block_allowed")]
     #[test_case(TestParams {
         // This case will calculate the hard expiry as:
-        // chain_length (10) - expiry_window (5) = 5, 
+        // chain_length (10) - expiry_window (5) = 5,
         // and at_block_height (4) < 5
         chain_length: 10,
         expiry_window: 5,

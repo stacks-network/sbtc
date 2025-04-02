@@ -1,15 +1,15 @@
 //! Handlers for Deposit endpoints.
-use bitcoin::opcodes::all::{self as opcodes};
 use bitcoin::ScriptBuf;
+use bitcoin::opcodes::all::{self as opcodes};
 use sbtc::deposits::ReclaimScriptInputs;
 use sha2::{Digest, Sha256};
 use stacks_common::codec::StacksMessageCodec as _;
 use tracing::instrument;
 use warp::http::StatusCode;
-use warp::reply::{json, with_status, Reply};
+use warp::reply::{Reply, json, with_status};
 
-use crate::api::models::common::requests::BasicPaginationQuery;
 use crate::api::models::common::Status;
+use crate::api::models::common::requests::BasicPaginationQuery;
 use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
@@ -24,11 +24,11 @@ use crate::api::models::{
 use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
+use crate::database::entries::StatusEntry;
 use crate::database::entries::deposit::{
     DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
     ValidatedUpdateDepositsRequest,
 };
-use crate::database::entries::StatusEntry;
 
 /// Get deposit handler.
 #[utoipa::path(
@@ -455,21 +455,8 @@ pub async fn update_deposits(
         }
 
         // Validate request.
-        let validated_request: ValidatedUpdateDepositsRequest = body.try_into()?;
-
-        // Infer the new chainstates that would come from these deposit updates and then
-        // attempt to update the chainstates.
-        let inferred_chainstates = validated_request.inferred_chainstates();
-        for chainstate in inferred_chainstates {
-            // TODO(TBD): Determine what happens if this occurs in multiple lambda
-            // instances at once.
-            crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(
-                &context,
-                is_trusted_key,
-                &chainstate,
-            )
-            .await?;
-        }
+        let validated_request: ValidatedUpdateDepositsRequest =
+            body.try_into_validated_update_request(api_state.chaintip().into())?;
 
         // Create aggregator.
         let mut updated_deposits: Vec<(usize, Deposit)> =
@@ -552,9 +539,7 @@ fn extract_reclaim_pubkeys_hash(reclaim_script: &ScriptBuf) -> Option<String> {
 
     match reclaim.user_script().as_bytes() {
         // The reclaim script used by sBTC Bridge and Leather.
-        [OP_DROP, OP_PUSHBYTES_32, pubkey @ .., OP_CHECKSIG] => {
-            Some(vec![pubkey.try_into().ok()?])
-        }
+        [OP_DROP, OP_PUSHBYTES_32, pubkey @ .., OP_CHECKSIG] => Some(vec![pubkey.try_into().ok()?]),
         // The multi-sig reclaim script used by Asigna.
         [OP_DROP, keys_data @ .., OP_NUMEQUAL] => {
             // keys_data is a composed like below:
@@ -612,7 +597,7 @@ mod tests {
     use super::*;
     use bitcoin::{
         key::rand::rngs::OsRng,
-        secp256k1::{SecretKey, SECP256K1},
+        secp256k1::{SECP256K1, SecretKey},
     };
     use test_case::test_case;
 

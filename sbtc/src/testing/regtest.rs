@@ -1,11 +1,6 @@
 //! Integration testing helper functions
 //!
 
-use bitcoin::absolute::LockTime;
-use bitcoin::key::TapTweak;
-use bitcoin::sighash::Prevouts;
-use bitcoin::sighash::SighashCache;
-use bitcoin::transaction::Version;
 use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Amount;
@@ -23,6 +18,15 @@ use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitcoin::Txid;
 use bitcoin::Witness;
+use bitcoin::absolute::LockTime;
+use bitcoin::key::TapTweak;
+use bitcoin::sighash::Prevouts;
+use bitcoin::sighash::SighashCache;
+use bitcoin::transaction::Version;
+use bitcoincore_rpc::Auth;
+use bitcoincore_rpc::Client;
+use bitcoincore_rpc::Error as BtcRpcError;
+use bitcoincore_rpc::RpcApi;
 use bitcoincore_rpc::json::ImportDescriptors;
 use bitcoincore_rpc::json::ListUnspentQueryOptions;
 use bitcoincore_rpc::json::ListUnspentResultEntry;
@@ -32,10 +36,6 @@ use bitcoincore_rpc::json::Timestamp;
 use bitcoincore_rpc::json::Utxo;
 use bitcoincore_rpc::jsonrpc::error::Error as JsonRpcError;
 use bitcoincore_rpc::jsonrpc::error::RpcError;
-use bitcoincore_rpc::Auth;
-use bitcoincore_rpc::Client;
-use bitcoincore_rpc::Error as BtcRpcError;
-use bitcoincore_rpc::RpcApi;
 use secp256k1::SECP256K1;
 use std::sync::OnceLock;
 

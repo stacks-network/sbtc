@@ -15,9 +15,9 @@ use crate::keys::PublicKey;
 use crate::network;
 use crate::network::MessageTransfer;
 use crate::storage;
-use crate::storage::model;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
+use crate::storage::model;
 use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::transaction_signer;
@@ -219,13 +219,15 @@ where
             .await;
 
         for handle in event_loop_handles.into_iter() {
-            assert!(handle
-                .context
-                .get_storage()
-                .get_encrypted_dkg_shares(&aggregate_key)
-                .await
-                .expect("storage error")
-                .is_some());
+            assert!(
+                handle
+                    .context
+                    .get_storage()
+                    .get_encrypted_dkg_shares(&aggregate_key)
+                    .await
+                    .expect("storage error")
+                    .is_some()
+            );
         }
     }
 

@@ -3,12 +3,16 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::XOnlyPublicKey;
+use bitcoin::relative::LockTime;
 
+use crate::DEPOSIT_DUST_LIMIT;
+use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
+use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
@@ -16,6 +20,7 @@ use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignRequest;
+use crate::storage::DbRead;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::BitcoinTxRef;
@@ -24,11 +29,6 @@ use crate::storage::model::BitcoinWithdrawalOutput;
 use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
-use crate::storage::DbRead;
-use crate::DEPOSIT_DUST_LIMIT;
-use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
-use crate::WITHDRAWAL_BLOCKS_EXPIRY;
-use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use super::utxo::DepositRequest;
 use super::utxo::RequestRef;
@@ -967,10 +967,10 @@ impl WithdrawalRequestReport {
         match self.status {
             WithdrawalRequestStatus::Confirmed => {}
             WithdrawalRequestStatus::Unconfirmed => {
-                return WithdrawalValidationResult::TxNotOnBestChain
+                return WithdrawalValidationResult::TxNotOnBestChain;
             }
             WithdrawalRequestStatus::Fulfilled(_) => {
-                return WithdrawalValidationResult::RequestFulfilled
+                return WithdrawalValidationResult::RequestFulfilled;
             }
         }
 
@@ -1026,13 +1026,13 @@ impl WithdrawalRequestReport {
 mod tests {
     use std::sync::LazyLock;
 
-    use bitcoin::hashes::Hash as _;
     use bitcoin::ScriptBuf;
     use bitcoin::Sequence;
     use bitcoin::TxIn;
     use bitcoin::TxOut;
     use bitcoin::Txid;
     use bitcoin::Witness;
+    use bitcoin::hashes::Hash as _;
     use secp256k1::SECP256K1;
     use test_case::test_case;
 

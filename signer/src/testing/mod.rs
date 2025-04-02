@@ -18,9 +18,9 @@ pub mod transaction_signer;
 pub mod wallet;
 pub mod wsts;
 
-use bitcoin::key::TapTweak;
 use bitcoin::TapSighashType;
 use bitcoin::Witness;
+use bitcoin::key::TapTweak;
 use secp256k1::SECP256K1;
 
 use crate::bitcoin::utxo::UnsignedTransaction;
@@ -46,11 +46,19 @@ impl Settings {
 pub fn clear_env() {
     for var in std::env::vars() {
         if var.0.starts_with("SIGNER_") {
-            std::env::remove_var(var.0);
+            unsafe {
+                std::env::remove_var(var.0);
+            }
         }
     }
 }
 
+/// A wrapper for setting environment variables in tests
+pub fn set_var<K: AsRef<std::ffi::OsStr>, V: AsRef<std::ffi::OsStr>>(key: K, value: V) {
+    unsafe {
+        std::env::set_var(key, value);
+    }
+}
 /// A helper function for correctly setting witness data
 pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::Keypair) {
     let sighash_type = TapSighashType::All;

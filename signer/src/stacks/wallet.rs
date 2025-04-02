@@ -3,9 +3,9 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::LazyLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::LazyLock;
 
 use blockstack_lib::address::C32_ADDRESS_VERSION_MAINNET_MULTISIG;
 use blockstack_lib::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
@@ -22,9 +22,10 @@ use blockstack_lib::core::CHAIN_ID_TESTNET;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util::secp256k1::Secp256k1PublicKey;
 use rand::SeedableRng as _;
-use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Message;
+use secp256k1::ecdsa::RecoverableSignature;
 
+use crate::MAX_KEYS;
 use crate::config::NetworkKind;
 use crate::config::SignerConfig;
 use crate::context::Context;
@@ -34,9 +35,8 @@ use crate::keys::PublicKey;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsTxPayload;
-use crate::storage::model::BitcoinBlockHash;
 use crate::storage::DbRead;
-use crate::MAX_KEYS;
+use crate::storage::model::BitcoinBlockHash;
 
 /// Stacks multisig addresses are Hash160 hashes of bitcoin Scripts (more
 /// or less). The enum value below defines which Script will be used to
@@ -160,7 +160,7 @@ impl SignerWallet {
         })
     }
 
-    /// Load the multi-sig wallet from the last rotate-keys-trasnaction
+    /// Load the multi-sig wallet from the last rotate-keys transaction
     /// stored in the database. If it's not there, fall back to the
     /// bootstrap multi-sig wallet in the signer's config.
     ///
@@ -369,9 +369,11 @@ impl MultisigTx {
     /// Creates a signed transaction with the available signatures
     pub fn finalize_transaction(mut self) -> StacksTransaction {
         use TransactionSpendingCondition::OrderIndependentMultisig;
-        let cond = match &mut self.tx.auth {
-            TransactionAuth::Standard(OrderIndependentMultisig(cond)) => cond,
-            _ => unreachable!("spending condition invariant not upheld"),
+        // This struct maintains the fact that it only uses the
+        // TransactionSpendingCondition::OrderIndependentMultisig variant
+        // for the transaction auth.
+        let TransactionAuth::Standard(OrderIndependentMultisig(cond)) = &mut self.tx.auth else {
+            unreachable!("spending condition invariant not upheld");
         };
         let key_encoding = TransactionPublicKeyEncoding::Compressed;
 
@@ -386,7 +388,7 @@ impl MultisigTx {
     }
 }
 
-/// Get the number of bytes for a fully signed stacks trasnaction with the
+/// Get the number of bytes for a fully signed stacks transaction with the
 /// given payload.
 ///
 /// This function is very unlikely to fail in practice.
@@ -438,9 +440,9 @@ mod tests {
     use blockstack_lib::chainstate::stacks::TransactionPayload;
     use blockstack_lib::clarity::vm::Value as ClarityValue;
     use fake::Fake;
+    use rand::SeedableRng as _;
     use rand::rngs::OsRng;
     use rand::seq::SliceRandom;
-    use rand::SeedableRng as _;
     use secp256k1::Keypair;
     use secp256k1::SECP256K1;
 
@@ -451,10 +453,10 @@ mod tests {
     use crate::signature::sign_stacks_tx;
     use crate::stacks::contracts::AsContractCall;
     use crate::stacks::contracts::ReqContext;
+    use crate::storage::DbWrite;
     use crate::storage::model;
     use crate::storage::model::RotateKeysTransaction;
     use crate::storage::model::StacksPrincipal;
-    use crate::storage::DbWrite;
     use crate::testing::context::ConfigureMockedClients;
     use crate::testing::context::TestContext;
     use crate::testing::context::*;

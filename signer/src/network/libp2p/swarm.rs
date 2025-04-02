@@ -8,15 +8,15 @@ use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::upgrade::Version;
 use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
+use libp2p::swarm::NetworkBehaviour;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::dial_opts::DialOpts;
-use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
-    autonat, gossipsub, identify, kad, mdns, noise, ping, quic, tcp, yamux, Multiaddr, PeerId,
-    Swarm, Transport,
+    Multiaddr, PeerId, Swarm, Transport, autonat, gossipsub, identify, kad, mdns, noise, ping,
+    quic, tcp, yamux,
 };
-use rand::rngs::StdRng;
 use rand::SeedableRng as _;
+use rand::rngs::StdRng;
 use tokio::sync::Mutex;
 
 use super::errors::SignerSwarmError;

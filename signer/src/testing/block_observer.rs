@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use bitcoin::hashes::Hash;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
+use bitcoin::hashes::Hash;
 use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
@@ -27,13 +27,13 @@ use emily_client::models::Status;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
 
+use crate::bitcoin::BitcoinInteract;
+use crate::bitcoin::GetTransactionFeeResult;
+use crate::bitcoin::TransactionLookupHint;
 use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
-use crate::bitcoin::BitcoinInteract;
-use crate::bitcoin::GetTransactionFeeResult;
-use crate::bitcoin::TransactionLookupHint;
 use crate::context::SbtcLimits;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
@@ -518,7 +518,6 @@ impl EmilyInteract for TestHarness {
     async fn accept_deposits<'a>(
         &'a self,
         _transaction: &'a utxo::UnsignedTransaction<'a>,
-        _stacks_chain_tip: &'a model::StacksBlock,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
         unimplemented!()
     }
@@ -526,7 +525,6 @@ impl EmilyInteract for TestHarness {
     async fn accept_withdrawals<'a>(
         &'a self,
         _transaction: &'a utxo::UnsignedTransaction<'a>,
-        _stacks_chain_tip: &'a model::StacksBlock,
     ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
         unimplemented!()
     }

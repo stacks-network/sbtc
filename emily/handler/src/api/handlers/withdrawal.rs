@@ -1,22 +1,22 @@
 //! Handlers for withdrawal endpoints.
 use tracing::{debug, instrument};
-use warp::reply::{json, with_status, Reply};
+use warp::reply::{Reply, json, with_status};
 
-use crate::api::models::common::requests::BasicPaginationQuery;
 use crate::api::models::common::Status;
+use crate::api::models::common::requests::BasicPaginationQuery;
+use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::api::models::withdrawal::{
     requests::{CreateWithdrawalRequestBody, GetWithdrawalsQuery, UpdateWithdrawalsRequestBody},
     responses::{GetWithdrawalsResponse, UpdateWithdrawalsResponse},
 };
-use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
+use crate::database::entries::StatusEntry;
 use crate::database::entries::withdrawal::{
     ValidatedUpdateWithdrawalRequest, WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent,
     WithdrawalParametersEntry,
 };
-use crate::database::entries::StatusEntry;
 use warp::http::StatusCode;
 
 /// Get withdrawal handler.
@@ -256,6 +256,7 @@ pub async fn create_withdrawal(
             sender,
             amount,
             parameters,
+            txid,
         } = body;
 
         let status = Status::Pending;
@@ -266,6 +267,7 @@ pub async fn create_withdrawal(
                 request_id,
                 stacks_block_hash: stacks_block_hash.clone(),
             },
+            stacks_block_height,
             recipient,
             sender,
             amount,
@@ -279,6 +281,7 @@ pub async fn create_withdrawal(
             status,
             last_update_block_hash: stacks_block_hash,
             last_update_height: stacks_block_height,
+            txid,
             ..Default::default()
         };
         // Validate withdrawal entry.
@@ -347,21 +350,8 @@ pub async fn update_withdrawals(
         }
 
         // Validate request.
-        let validated_request: ValidatedUpdateWithdrawalRequest = body.try_into()?;
-
-        // Infer the new chainstates that would come from these withdrawal updates and then
-        // attempt to update the chainstates.
-        let inferred_chainstates = validated_request.inferred_chainstates();
-        for chainstate in inferred_chainstates {
-            // TODO(TBD): Determine what happens if this occurs in multiple lambda
-            // instances at once.
-            crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(
-                &context,
-                is_trusted_key,
-                &chainstate,
-            )
-            .await?;
-        }
+        let validated_request: ValidatedUpdateWithdrawalRequest =
+            body.try_into_validated_update_request(api_state.chaintip().into())?;
 
         // Create aggregator.
         let mut updated_withdrawals: Vec<(usize, Withdrawal)> =
