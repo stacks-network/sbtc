@@ -18,12 +18,10 @@ use signer::testing;
 
 use fake::Fake;
 use rand::SeedableRng;
-use signer::testing::context::*;
-use signer::testing::docker::BitcoinCoreTestExt;
-use signer::testing::storage::DbReadTestExt;
 use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 use signer::testing::context::*;
+use signer::testing::docker::BitcoinCoreTestExt;
 use signer::testing::storage::DbReadTestExt;
 
 use crate::setup::SweepAmounts;

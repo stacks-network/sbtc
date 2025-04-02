@@ -36,8 +36,8 @@ use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo;
 use sbtc::testing::regtest::BitcoinCoreRegtestExt as _;
 use sbtc::testing::regtest::Recipient;
-use secp256k1::SECP256K1;
 use sbtc_docker_testing::images::BitcoinCore;
+use secp256k1::SECP256K1;
 use secp256k1::SecretKey;
 
 /// Test the CreateDepositRequest::validate function.

@@ -16,8 +16,8 @@ use signer::testing;
 use signer::testing::context::*;
 
 use fake::Fake;
-use signer::testing::docker::BitcoinCoreTestExt;
 use signer::DEPOSIT_DUST_LIMIT;
+use signer::testing::docker::BitcoinCoreTestExt;
 
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;

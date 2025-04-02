@@ -17,16 +17,16 @@ use more_asserts::assert_gt;
 use more_asserts::assert_le;
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
-use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 use sbtc::testing::regtest::BitcoinCoreRegtestExt;
 use sbtc_docker_testing::images::BitcoinCore;
+use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 use signer::bitcoin::validation::WithdrawalRequestStatus;
 use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::SweptWithdrawalRequest;
 use signer::storage::model::WithdrawalRequest;
-use signer::testing::docker::BitcoinCoreTestExt;
 use signer::testing::IterTestExt as _;
+use signer::testing::docker::BitcoinCoreTestExt;
 use time::OffsetDateTime;
 
 use signer::bitcoin::MockBitcoinInteract;

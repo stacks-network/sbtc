@@ -4,7 +4,7 @@ use bitcoin::transaction::Version;
 use bitcoin::{AddressType, Amount, BlockHash, ScriptBuf, Sequence, Witness};
 use bitcoincore_rpc::RpcApi as _;
 use sbtc::testing::regtest::{
-    p2wpkh_sign_transaction, AsUtxo as _, BitcoinCoreRegtestExt as _, Recipient,
+    AsUtxo as _, BitcoinCoreRegtestExt as _, Recipient, p2wpkh_sign_transaction,
 };
 use sbtc_docker_testing::images::BitcoinCore;
 use signer::bitcoin::{BitcoinInteract, TransactionLookupHint};

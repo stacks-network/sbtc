@@ -143,7 +143,7 @@ async fn block_hash_stream_streams_block_hashes() -> Result<(), Box<dyn std::err
             }
             Ok(None) => return Err("Channel closed unexpectedly".into()),
             Err(_) => {
-                return Err(format!("Timeout waiting for block hash notification #{}", i).into())
+                return Err(format!("Timeout waiting for block hash notification #{}", i).into());
             }
         }
     }
