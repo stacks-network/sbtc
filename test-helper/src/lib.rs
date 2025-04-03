@@ -1,11 +1,14 @@
-use quote::quote;
-use syn::{parse_macro_input, Ident};
 use proc_macro::TokenStream;
+use quote::quote;
+use syn::{Ident, parse_macro_input};
 
 #[proc_macro]
 pub fn test_async(input: TokenStream) -> TokenStream {
     let inner_fn_name = parse_macro_input!(input as Ident);
-    let wrapper_fn_name = Ident::new(&format!("test_{}_wrapper", inner_fn_name), inner_fn_name.span());
+    let wrapper_fn_name = Ident::new(
+        &format!("test_{}_wrapper", inner_fn_name),
+        inner_fn_name.span(),
+    );
 
     let output = quote! {
         #[tokio::test]
@@ -23,7 +26,10 @@ pub fn test_async(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn test(input: TokenStream) -> TokenStream {
     let inner_fn_name = parse_macro_input!(input as Ident);
-    let wrapper_fn_name = Ident::new(&format!("test_{}_wrapper", inner_fn_name), inner_fn_name.span());
+    let wrapper_fn_name = Ident::new(
+        &format!("test_{}_wrapper", inner_fn_name),
+        inner_fn_name.span(),
+    );
 
     let output = quote! {
         #[test]

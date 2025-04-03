@@ -68,11 +68,11 @@ use signer::testing::dummy::SignerSetConfig;
 use signer::testing::storage::model::TestData;
 use signer::testing::wallet::ContractCallWrapper;
 
-use test_helper::test_async as run_test_async;
 use test_helper::test as run_test;
+use test_helper::test_async as run_test_async;
 
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 
 use fake::Fake;
 use rand::SeedableRng;
