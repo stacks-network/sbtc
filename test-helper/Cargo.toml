@@ -4,9 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-syn = "2.0"  # For parsing Rust code
-quote = "1.0"  # For generating code
-proc-macro2 = "1.0"  # Optional, for better compatibility with procedural macros
+syn = "2.0"
+quote = "1.0"
 
 [lib]
 proc-macro = true

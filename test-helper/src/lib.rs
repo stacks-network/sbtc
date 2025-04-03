@@ -12,7 +12,7 @@ pub fn test_async(input: TokenStream) -> TokenStream {
         async fn #wrapper_fn_name() {
             let mut rng = OsRng::default();
             let seed = rng.next_u64();
-            eprintln!("Failed with seed: {}", seed);
+            eprintln!("Failed with seed: {}", seed); // Nextest prints test output only on fail
             #inner_fn_name(seed).await;
         }
     };
@@ -30,7 +30,7 @@ pub fn test(input: TokenStream) -> TokenStream {
         fn #wrapper_fn_name() {
             let mut rng = OsRng::default();
             let seed = rng.next_u64();
-            eprintln!("Failed with seed: {}", seed);
+            eprintln!("Failed with seed: {}", seed);  // Nextest prints test output only on fail
             #inner_fn_name(seed);
         }
     };
