@@ -992,8 +992,8 @@ impl WithdrawalRequestReport {
             return WithdrawalValidationResult::AmountIsDust;
         }
 
-        let block_wait = bitcoin_chain_tip_height.saturating_sub(self.bitcoin_block_height);
-        if block_wait < WITHDRAWAL_MIN_CONFIRMATIONS.into() {
+        let block_wait = *bitcoin_chain_tip_height.saturating_sub(self.bitcoin_block_height);
+        if block_wait < WITHDRAWAL_MIN_CONFIRMATIONS {
             return WithdrawalValidationResult::RequestNotFinal;
         }
 
