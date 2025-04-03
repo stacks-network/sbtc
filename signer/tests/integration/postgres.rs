@@ -4814,7 +4814,7 @@ async fn signer_utxo_reorg_suite<const N: usize>(desc: ReorgDescription<N>) {
     }
 
     // And now for creating the reorg blocks.
-    for _ in 0..=((desc.num_blocks() - desc.reorg_height) + 1).into() {
+    for _ in 0..=(desc.num_blocks() - *desc.reorg_height) + 1 {
         let (new_data, new_chain_tip_ref) =
             test_data.new_block(&mut rng, &signer_set, &test_params, Some(&reorg_block_ref));
         reorg_block_ref = new_chain_tip_ref;
