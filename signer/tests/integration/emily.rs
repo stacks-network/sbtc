@@ -16,9 +16,9 @@ use bitcoincore_rpc_json::Utxo;
 use fake::Fake as _;
 use futures::future::join_all;
 use rand::SeedableRng;
+use sbtc_docker_testing::images::Emily;
 use test_case::test_case;
 use test_log::test;
-use url::Url;
 
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
@@ -63,9 +63,7 @@ use signer::testing::storage::model::TestData;
 use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
-use testing_emily_client::apis::testing_api::wipe_databases;
 
-use crate::setup::IntoEmilyTestingConfig as _;
 use crate::utxo_construction::make_deposit_request;
 
 async fn run_dkg<Rng, C>(
@@ -160,18 +158,10 @@ async fn deposit_flow() {
     let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
+    let emily = Emily::start().await.expect("failed to start emily");
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
     let stacks_client = WrappedMock::default();
-
-    // Wipe the Emily database to start fresh
-    wipe_databases(&emily_client.config().as_testing())
-        .await
-        .expect("Wiping Emily database in test setup failed.");
 
     let mut context = TestContext::builder()
         .with_storage(db.clone())
@@ -586,16 +576,9 @@ async fn get_deposit_request_works() {
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
-
-    wipe_databases(&emily_client.config().as_testing())
-        .await
-        .expect("Wiping Emily database in test setup failed.");
+    let emily = Emily::start().await.expect("failed to start emily");
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
     let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
     let deposit = setup.deposits.first().unwrap();
@@ -639,16 +622,13 @@ async fn test_get_deposits_with_status_request_paging(
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
+    let emily = Emily::start().await.expect("failed to start emily");
     let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        &emily.endpoint(),
         Duration::from_secs(timeout_secs),
         page_size,
     )
     .unwrap();
-
-    wipe_databases(&emily_client.config().as_testing())
-        .await
-        .expect("Wiping Emily database in test setup failed.");
 
     let futures = (0..num_deposits).map(|_| {
         let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
@@ -692,16 +672,9 @@ async fn test_get_deposits_returns_pending_and_accepted() {
     let num_deposits = 5;
     let num_accepted = 2;
 
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(10),
-        None,
-    )
-    .unwrap();
-
-    wipe_databases(&emily_client.config().as_testing())
-        .await
-        .expect("Wiping Emily database in test setup failed.");
+    let emily = Emily::start().await.expect("failed to start emily");
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(10), None).unwrap();
 
     // Create deposits
     let tx_setups: Vec<sbtc::testing::deposits::TxSetup> = (0..num_deposits)

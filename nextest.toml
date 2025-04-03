@@ -1,0 +1,51 @@
+################################################################################
+# Define test groups
+################################################################################
+
+[test-groups]
+# Test group for integration tests that need to be run serially. Tests in this
+# group will be run one at a time.
+serial = { max-threads = 1 }
+# Test group for integration tests that are heavy but run in parallel. Our
+# overrides below for heavy tests use 2 threads each, so the parallelism of
+# these tests will be limited to 2 tests at a time.
+heavy = { max-threads = 4 }
+
+################################################################################
+# Overrides for specific test filters
+################################################################################
+
+# Emily Handler
+# ------------------------------------------------------------------------------
+# All integration tests in the 'emily-handler' package as these interact with
+# shared instances of Bitcoin and Emily.
+[[profile.default.overrides]]
+filter = 'package(emily-handler) & kind(test)'
+test-group = 'serial'
+
+# ZMQ
+# ------------------------------------------------------------------------------
+# Due to the way that ZMQ works, it's possible for subscribers in tests to
+# get messages from other tests' bitcoin core instances, so these need to be
+# run serially.
+[[profile.default.overrides]]
+filter = 'package(signer) & kind(test) & test(/^zmq/)'
+test-group = 'serial'
+threads-required = 100  # Require all available test threads = make sure they run "alone"
+
+# Heavy Tests
+# ------------------------------------------------------------------------------
+# For our heavier tests (e.g. full e2e which take >20s), start them first
+# (priority=100) and give them 2 threads.
+[[profile.default.overrides]]
+filter = """
+package(signer) & kind(test) & (
+    test(transaction_coordinator::skip_smart_contract_deployment_and_key_rotation_if_up_to_date)
+    | test(transaction_coordinator::sign_bitcoin_transaction)
+    | test(transaction_coordinator::sign_bitcoin_transaction_withdrawals)
+    | test(transaction_coordinator::sign_bitcoin_transaction_multiple_locking_keys)
+)
+"""
+test-group = 'heavy'
+priority = 100          # Highest priority is 100 (-100..=100, default is 0)
+threads-required = 2    # Give them two threads each

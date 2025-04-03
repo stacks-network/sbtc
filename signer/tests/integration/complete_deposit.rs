@@ -2,7 +2,8 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use rand::SeedableRng;
 use rand::rngs::OsRng;
 
-use sbtc::testing::regtest;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
+use sbtc_docker_testing::images::BitcoinCore;
 use signer::error::Error;
 use signer::stacks::contracts::AsContractCall as _;
 use signer::stacks::contracts::CompleteDepositV1;
@@ -16,6 +17,7 @@ use signer::testing::context::*;
 
 use fake::Fake;
 use signer::DEPOSIT_DUST_LIMIT;
+use signer::testing::docker::BitcoinCoreTestExt;
 
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
@@ -154,14 +156,18 @@ async fn complete_deposit_validation_happy_path() {
     // This is just setup and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -195,7 +201,7 @@ async fn complete_deposit_validation_happy_path() {
     // toml config file.
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -218,14 +224,18 @@ async fn complete_deposit_validation_deployer_mismatch() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -258,7 +268,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -287,14 +297,18 @@ async fn complete_deposit_validation_missing_deposit_request() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -321,7 +335,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -350,14 +364,18 @@ async fn complete_deposit_validation_recipient_mismatch() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -391,7 +409,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -433,7 +451,10 @@ async fn complete_deposit_validation_fee_too_low() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
 
     let signers = TestSignerSet::new(&mut rng);
     // We are trying to trigger the AmountBelowDustLimit error.
@@ -451,13 +472,13 @@ async fn complete_deposit_validation_fee_too_low() {
         max_fee: 80_000,
         is_deposit: true,
     };
-    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
+    let mut setup = TestSweepSetup2::new_setup(signers, client.clone(), faucet, &[amounts]);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -469,11 +490,11 @@ async fn complete_deposit_validation_fee_too_low() {
 
     // Normal: we submit the transaction sweeping the funds. It gets
     // confirmed; this generates a new bitcoin block behind the scene.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: When a new bitcoin block is generated, we need to update the
     // signer's database with blockchain data.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
@@ -531,7 +552,7 @@ async fn complete_deposit_validation_fee_too_low() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -584,14 +605,18 @@ async fn complete_deposit_validation_fee_too_high() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let mut setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -629,7 +654,7 @@ async fn complete_deposit_validation_fee_too_high() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -658,14 +683,18 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -700,7 +729,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -729,14 +758,18 @@ async fn complete_deposit_validation_sweep_reorged() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -780,7 +813,7 @@ async fn complete_deposit_validation_sweep_reorged() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -810,14 +843,18 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -853,7 +890,7 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -883,14 +920,18 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -924,7 +965,7 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -953,14 +994,18 @@ async fn complete_deposit_validation_deposit_invalid_sweep() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -991,7 +1036,7 @@ async fn complete_deposit_validation_deposit_invalid_sweep() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -1020,14 +1065,18 @@ async fn complete_deposit_validation_request_completed() {
     // This is just setup and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -1061,7 +1110,7 @@ async fn complete_deposit_validation_request_completed() {
     // toml config file.
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();

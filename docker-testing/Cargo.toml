@@ -1,0 +1,14 @@
+[package]
+name = "sbtc-docker-testing"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitcoincore-rpc.workspace = true
+bitcoincore-rpc-json.workspace = true
+futures.workspace = true
+rand.workspace = true
+url.workspace = true
+testcontainers.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

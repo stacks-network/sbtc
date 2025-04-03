@@ -7,6 +7,7 @@ pub mod block_observer;
 pub mod blocks;
 pub mod btc;
 pub mod context;
+pub mod docker;
 pub mod dummy;
 pub mod message;
 pub mod network;

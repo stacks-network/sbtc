@@ -34,7 +34,9 @@ use sbtc::deposits::ReclaimScriptInputs;
 use sbtc::testing::deposits::TxSetup;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt as _;
 use sbtc::testing::regtest::Recipient;
+use sbtc_docker_testing::images::BitcoinCore;
 use secp256k1::SECP256K1;
 use secp256k1::SecretKey;
 
@@ -42,15 +44,18 @@ use secp256k1::SecretKey;
 ///
 /// We check that we can validate a transaction in the mempool using the
 /// electrum and bitcoin-core clients
-#[test]
-fn tx_validation_from_mempool() {
+#[tokio::test]
+async fn tx_validation_from_mempool() {
     let max_fee: u64 = 15000;
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
     let mut setup: TxSetup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
 
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let rpc = bitcoind.as_ref();
+    let faucet = bitcoind.faucet();
+
     let depositor = Recipient::new(AddressType::P2tr);
 
     // Start off with some initial UTXOs to work with.
@@ -100,11 +105,13 @@ fn tx_validation_from_mempool() {
 ///
 /// We do not attempt to create an actual P2TR deposit, but an
 /// (unsupported) P2SH deposit.
-#[test]
-fn minimal_push_check() {
+#[tokio::test]
+async fn minimal_push_check() {
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
 
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let rpc = bitcoind.as_ref();
+    let faucet = bitcoind.faucet();
     let depositor = Recipient::new(AddressType::P2tr);
 
     // Start off with some initial UTXOs to work with.
@@ -211,11 +218,13 @@ fn minimal_push_check() {
 /// 4. Confirm that transaction and try to spend it immediately. The
 ///    transaction that tries to spend the transaction from (3) should be
 ///    rejected.
-#[test]
-fn op_csv_disabled() {
+#[tokio::test]
+async fn op_csv_disabled() {
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
 
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let rpc = bitcoind.as_ref();
+    let faucet = bitcoind.faucet();
     let depositor = Recipient::new(AddressType::P2tr);
 
     // Start off with some initial UTXOs to work with.
@@ -407,13 +416,15 @@ fn op_csv_disabled() {
 /// 3. Create and submit another transaction reclaiming the funds.
 /// 4. Confirm the transaction and check that the balance is what it is
 ///    supposed to be, less the bitcoin transaction fees.
-#[test]
-fn reclaiming_rejected_deposits() {
+#[tokio::test]
+async fn reclaiming_rejected_deposits() {
     let max_fee: u64 = 15000;
     let amount_sats = 49_900_000;
     let lock_time = 5;
 
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let rpc = bitcoind.as_ref();
+    let faucet = bitcoind.faucet();
     let depositor = Recipient::new(AddressType::P2tr);
     assert_eq!(depositor.get_balance(rpc).to_sat(), 0);
 

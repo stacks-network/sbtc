@@ -8,8 +8,10 @@ use fake::Fake;
 use fake::Faker;
 use mockito::Server;
 use rand::SeedableRng as _;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
+use sbtc_docker_testing::images::BitcoinCore;
+use sbtc_docker_testing::images::Emily;
 use serde_json::json;
-use url::Url;
 
 use emily_client::apis::deposit_api;
 use emily_client::models::CreateDepositRequestBody;
@@ -30,10 +32,9 @@ use signer::storage::model::BitcoinBlockHash;
 use signer::storage::postgres::PgStore;
 use signer::testing;
 use signer::testing::context::*;
+use signer::testing::docker::BitcoinCoreTestExt;
 use signer::testing::request_decider::TestEnvironment;
-use testing_emily_client::apis::testing_api;
 
-use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSweepSetup;
 use crate::setup::backfill_bitcoin_blocks;
 
@@ -144,15 +145,17 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
         .with_mocked_clients()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     // We need to store the deposit request because of the foreign key
     // constraint on the deposit_signers table.
@@ -230,15 +233,17 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
         .with_mocked_clients()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     // We need to store the deposit request because of the foreign key
     // constraint on the deposit_signers table.
@@ -312,20 +317,17 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
+    let emily = Emily::start().await.expect("failed to start emily");
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_emily_client(emily_client.clone())
         .with_mocked_stacks_client()
         .build();
@@ -335,15 +337,13 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     // error when trying to send a message at the end.
     let _rec = ctx.get_signal_receiver();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     let network = SignerNetwork::single(&ctx);
 
@@ -440,15 +440,17 @@ async fn blocklist_client_retry(num_failures: u8, failing_iters: u8) {
         .with_mocked_clients()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     // We need to store the deposit request because of the foreign key
     // constraint on the deposit_signers table.
@@ -562,14 +564,16 @@ async fn do_not_procceed_with_blocked_addresses(is_withdrawal: bool, is_blocked:
         .with_mocked_clients()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
 
     // Creating test setup which will help store transactions and requests
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     if is_withdrawal {
         // For withdrawals we can store only request and dkg shares

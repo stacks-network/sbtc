@@ -1,59 +1,77 @@
+use std::time::Duration;
+
 use bitcoin::Block;
 use bitcoin::BlockHash;
 use futures::StreamExt;
-use sbtc::testing::regtest;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
+use sbtc_docker_testing::images::BitcoinCore;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
-
-pub const BITCOIN_CORE_ZMQ_ENDPOINT: &str = "tcp://localhost:28332";
 
 /// This tests that out bitcoin block stream receives new blocks from
 /// bitcoin-core as it receives them. We create the stream, generate
 /// bitcoin blocks, and wait for the blocks to be received from the stream.
 #[tokio::test]
-async fn block_stream_streams_blocks() {
-    let (_, faucet) = regtest::initialize_blockchain();
+async fn block_stream_streams_blocks() -> Result<(), Box<dyn std::error::Error>> {
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let faucet = bitcoind.faucet();
+    let zmq_endpoint = bitcoind.zmq_endpoint();
 
-    let stream = BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT)
+    // Ensure ZMQ endpoint is ready before proceeding
+    ensure_zmq_ready(zmq_endpoint.as_str(), Duration::from_secs(2)).await?;
+
+    let stream = BitcoinCoreMessageStream::new_from_endpoint(zmq_endpoint.as_str())
         .await
-        .unwrap();
+        .map_err(|e| format!("Failed to create message stream: {}", e))?;
 
     let mut block_stream = stream.to_block_stream();
-
-    // We want to have our stream always waiting for blocks so that we get
-    // them as they arise. The issue is that await points essentially block
-    // progress on the current code execution path. So we spawn a new task
-    // to handle the blocking part, and have the task send us blocks
-    // through a channel as they arrive.
     let (sx, mut rx) = tokio::sync::mpsc::channel::<Block>(100);
 
-    // This task will "watch" for bitcoin blocks and send them to us.
-    tokio::spawn(async move {
-        while let Some(Ok(block)) = block_stream.next().await {
-            if sx.is_closed() {
-                break;
+    // Clean up any existing notifications first
+    tokio::time::timeout(Duration::from_millis(500), async {
+        loop {
+            match rx.try_recv() {
+                Ok(_) => continue, // Keep draining
+                Err(_) => break,   // Empty or closed
             }
+        }
+    })
+    .await
+    .map_err(|_| "Timeout while draining channel")?;
 
-            tracing::info!("Sending block {:?}", block.block_hash());
-            sx.send(block).await.unwrap();
+    // Start receiving new blocks only
+    let _task_handle = tokio::spawn(async move {
+        while let Some(Ok(block)) = block_stream.next().await {
+            if let Err(_) = sx.send(block).await {
+                break; // Channel closed
+            }
         }
     });
 
-    // When the faucet generates a block it returns the block hash of the
-    // generated block. We'll match this hash with the hash of the block
-    // received from our task above.
-    let block_hashes = faucet.generate_blocks(1);
-    let item = rx.recv().await;
+    // Test with multiple block generation and verification cycles
+    for i in 1..=3 {
+        // Generate a new block and get its hash
+        let block_hashes = faucet.generate_blocks(1);
+        tracing::info!("Generated block #{} with hash: {}", i, block_hashes[0]);
 
-    // We only generated one block, so we should only have one block hash.
-    assert_eq!(block_hashes.len(), 1);
-    assert_eq!(block_hashes[0], item.unwrap().block_hash());
+        // Use a timeout to avoid hanging if notification never arrives
+        match tokio::time::timeout(Duration::from_secs(5), rx.recv()).await {
+            Ok(Some(block)) => {
+                let received_hash = block.block_hash();
+                tracing::info!("Received block #{} with hash: {}", i, received_hash);
 
-    // Let's try again for good measure, couldn't hurt.
-    let block_hashes = faucet.generate_blocks(1);
-    let item = rx.recv().await;
+                // Verify it matches what we generated
+                assert_eq!(
+                    block_hashes[0], received_hash,
+                    "Block hash mismatch in iteration {}",
+                    i
+                );
+            }
+            Ok(None) => return Err("Channel closed unexpectedly".into()),
+            Err(_) => return Err(format!("Timeout waiting for block notification #{}", i).into()),
+        }
+    }
 
-    assert_eq!(block_hashes.len(), 1);
-    assert_eq!(block_hashes[0], item.unwrap().block_hash());
+    Ok(())
 }
 
 /// This tests that out bitcoin block hash stream receives new block hashes
@@ -62,48 +80,103 @@ async fn block_stream_streams_blocks() {
 /// stream. This also checks that we parse block hashes correctly, since
 /// they are supposed to be little-endian formatted.
 #[tokio::test]
-async fn block_hash_stream_streams_block_hashes() {
-    let (_, faucet) = regtest::initialize_blockchain();
+async fn block_hash_stream_streams_block_hashes() -> Result<(), Box<dyn std::error::Error>> {
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let faucet = bitcoind.faucet();
+    let zmq_endpoint = bitcoind.zmq_endpoint();
 
-    let stream = BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT)
+    // Ensure ZMQ endpoint is ready before proceeding
+    ensure_zmq_ready(zmq_endpoint.as_str(), Duration::from_secs(2)).await?;
+
+    let stream = BitcoinCoreMessageStream::new_from_endpoint(zmq_endpoint.as_str())
         .await
-        .unwrap();
+        .map_err(|e| format!("Failed to create message stream: {}", e))?;
 
     let mut block_hash_stream = stream.to_block_hash_stream();
 
-    // We want to have our stream always waiting for block hashes so that
-    // we get them as they arise. The issue is that await points
-    // essentially block progress on the current code execution path. So we
-    // spawn a new task to handle the blocking part, and have the task send
-    // us blocks through a channel as they arrive.
+    // Set up channel for communication between the stream task and test
     let (sx, mut rx) = tokio::sync::mpsc::channel::<BlockHash>(100);
 
-    // This task will "watch" for bitcoin blocks and send them to us.
-    tokio::spawn(async move {
+    // Clean up any potentially lingering notifications from the faucet first
+    tokio::time::timeout(Duration::from_millis(500), async {
+        loop {
+            match rx.try_recv() {
+                Ok(_) => continue, // Keep draining
+                Err(_) => break,   // Empty or closed
+            }
+        }
+    })
+    .await
+    .map_err(|_| "Timeout while draining channel")?;
+
+    // This task will "watch" for bitcoin blocks and send them to us
+    let _task_handle = tokio::spawn(async move {
         while let Some(Ok(block_hash)) = block_hash_stream.next().await {
             if sx.is_closed() {
                 break;
             }
 
-            tracing::info!("Sending block hash {block_hash}");
-            sx.send(block_hash).await.unwrap();
+            tracing::info!("Received block hash {block_hash}");
+            if let Err(_) = sx.send(block_hash).await {
+                break; // Channel closed
+            }
         }
     });
 
-    // When the faucet generates a block it returns the block hash of the
-    // generated block. We'll match this hash with the hash received from
-    // our task above.
-    let block_hashes = faucet.generate_blocks(1);
-    let item = rx.recv().await;
+    // Test with multiple block generation and verification cycles for consistency
+    for i in 1..=3 {
+        // Generate a new block and get its hash
+        let block_hashes = faucet.generate_blocks(1);
+        tracing::info!("Generated block #{} with hash: {}", i, block_hashes[0]);
 
-    // We only generated one block, so we should only have one block hash.
-    assert_eq!(block_hashes.len(), 1);
-    assert_eq!(block_hashes[0], item.unwrap());
+        // Use a timeout to avoid hanging if notification never arrives
+        match tokio::time::timeout(Duration::from_secs(5), rx.recv()).await {
+            Ok(Some(received_hash)) => {
+                tracing::info!("Received block hash #{}: {}", i, received_hash);
 
-    // Let's try again for good measure, couldn't hurt.
-    let block_hashes = faucet.generate_blocks(1);
-    let item = rx.recv().await;
+                // Verify it matches what we generated
+                assert_eq!(
+                    block_hashes[0], received_hash,
+                    "Block hash mismatch in iteration {}",
+                    i
+                );
+            }
+            Ok(None) => return Err("Channel closed unexpectedly".into()),
+            Err(_) => {
+                return Err(format!("Timeout waiting for block hash notification #{}", i).into());
+            }
+        }
+    }
 
-    assert_eq!(block_hashes.len(), 1);
-    assert_eq!(block_hashes[0], item.unwrap());
+    Ok(())
+}
+
+/// Ensures ZMQ endpoint is ready and accessible before proceeding
+async fn ensure_zmq_ready(
+    endpoint: &str,
+    timeout: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Extract host and port from ZMQ endpoint
+    let addr = endpoint
+        .strip_prefix("tcp://")
+        .ok_or_else(|| Box::<dyn std::error::Error>::from("Invalid ZMQ endpoint format"))?;
+
+    // Try to connect with exponential backoff
+    tokio::time::timeout(timeout, async {
+        let mut delay = Duration::from_millis(25);
+        loop {
+            match tokio::net::TcpStream::connect(addr).await {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    tracing::debug!("ZMQ not ready yet: {}", e);
+                    tokio::time::sleep(delay).await;
+                    delay = std::cmp::min(delay * 2, Duration::from_millis(200));
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|_| {
+        Box::<dyn std::error::Error>::from("ZMQ endpoint not accessible within allotted timeout")
+    })?
 }

@@ -20,8 +20,10 @@ use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
 use rand::SeedableRng as _;
-use sbtc::testing::regtest;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
 use sbtc::testing::regtest::Recipient;
+use sbtc_docker_testing::images::BitcoinCore;
+use sbtc_docker_testing::images::Emily;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::block_observer::get_signer_set_and_aggregate_key;
@@ -43,9 +45,10 @@ use signer::storage::model::TxOutputType;
 use signer::storage::model::TxPrevout;
 use signer::storage::model::TxPrevoutType;
 use signer::storage::postgres::PgStore;
+use signer::testing::btc::new_zmq_block_hash_stream;
+use signer::testing::docker::BitcoinCoreTestExt;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
-use testing_emily_client::apis::testing_api;
 
 use signer::block_observer::BlockObserver;
 use signer::context::Context as _;
@@ -61,11 +64,9 @@ use signer::transaction_coordinator::should_coordinate_dkg;
 use signer::transaction_signer::assert_allow_dkg_begin;
 use url::Url;
 
-use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSweepSetup;
 use crate::transaction_coordinator::mock_reqwests_status_code_error;
 use crate::utxo_construction::make_deposit_request;
-use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
 
 pub const GET_POX_INFO_JSON: &str =
     include_str!("../../tests/fixtures/stacksapi-get-pox-info-test-data.json");
@@ -81,11 +82,15 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // with a real bitcoin core client and a real connection to our
     // database.
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
     let db = testing::storage::new_test_database().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
+
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
@@ -94,8 +99,8 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // We're going to create two confirmed deposits. This also generates
     // sweep transactions, but this information is not in our database, so
     // it doesn't matter for this test.
-    let setup0 = TestSweepSetup::new_setup(rpc, faucet, 100_000, &mut rng);
-    let setup1 = TestSweepSetup::new_setup(rpc, faucet, 200_000, &mut rng);
+    let setup0 = TestSweepSetup::new_setup(&client, faucet, 100_000, &mut rng);
+    let setup1 = TestSweepSetup::new_setup(&client, faucet, 200_000, &mut rng);
 
     // Let's prep Emily with information about these deposits.
     ctx.with_emily_client(|client| {
@@ -156,7 +161,8 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
+        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(bitcoind.zmq_endpoint().as_str())
+            .await,
     };
 
     // We need at least one receiver
@@ -182,7 +188,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
-    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
+    let chain_tip_info = client.get_chain_tips().unwrap().pop().unwrap();
     let deposit_requests = db2
         .get_deposit_requests(&chain_tip_info.hash.into(), 100)
         .await
@@ -241,12 +247,12 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 #[tokio::test]
 async fn link_blocks() {
     let db = testing::storage::new_test_database().await;
-
+    let bitcoind = BitcoinCore::start_regtest().await;
     let stacks_client = StacksClient::new(Url::parse("http://localhost:20443").unwrap()).unwrap();
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoind.client())
         .with_stacks_client(stacks_client.clone())
         .with_mocked_emily_client()
         .build();
@@ -261,7 +267,7 @@ async fn link_blocks() {
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
+        bitcoin_blocks: new_zmq_block_hash_stream(bitcoind.zmq_endpoint().as_str()).await,
     };
 
     let mut signal_rx = ctx.get_signal_receiver();
@@ -356,28 +362,24 @@ async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Vec<TxPrevout>
 #[tokio::test]
 async fn block_observer_stores_donation_and_sbtc_utxos() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.faucet();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
+    let emily = Emily::start().await.expect("failed to start emily");
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
-
-    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
+    let chain_tip_info = client.get_chain_tips().unwrap().pop().unwrap();
 
     // 1. Create a database, an associated context for the block observer.
 
     let db = testing::storage::new_test_database().await;
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoind.client())
         .with_emily_client(emily_client.clone())
         .with_mocked_stacks_client()
         .build();
@@ -418,7 +420,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
+        bitcoin_blocks: bitcoind.zmq_block_hash_stream().await,
     };
 
     tokio::spawn(async move {
@@ -530,7 +532,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     // Now lets make a deposit transaction and submit it. First we get some
     // sats.
-    let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
+    let depositor_utxo = depositor.get_utxos(&client, None).pop().unwrap();
 
     let deposit_amount = 2_500_000;
     let max_fee = deposit_amount / 2;
@@ -542,7 +544,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         max_fee,
         signers_public_key,
     );
-    rpc.send_raw_transaction(&deposit_tx).unwrap();
+    client.send_raw_transaction(&deposit_tx).unwrap();
 
     // Now build the struct with the outstanding peg-in and peg-out requests.
     let requests = SbtcRequests {
@@ -569,7 +571,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     signer::testing::set_witness_data(&mut unsigned, signer.keypair);
 
     // Does the network accept the transaction? It had better.
-    rpc.send_raw_transaction(&unsigned.tx).unwrap();
+    client.send_raw_transaction(&unsigned.tx).unwrap();
 
     // ** Step 5 **
     //
@@ -647,11 +649,13 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
-    let (_, faucet) = regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let faucet = bitcoind.faucet();
+
     let db = testing::storage::new_test_database().await;
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoind.client())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
@@ -734,7 +738,7 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
+        bitcoin_blocks: bitcoind.zmq_block_hash_stream().await,
     };
 
     let mut signal_receiver = ctx.get_signal_receiver();
@@ -782,13 +786,15 @@ async fn next_headers_to_process_gets_all_headers() {
     // database.
     const START_HEIGHT: u64 = 103;
 
-    let (_, faucet) = regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let faucet = bitcoind.faucet();
+
     let db = testing::storage::new_test_database().await;
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
         .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = Some(START_HEIGHT))
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoind.client())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
@@ -840,18 +846,22 @@ async fn next_headers_to_process_ignores_known_headers() {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
-    let (rpc, _) = regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let client = bitcoind.client();
+    // Quick way to get some blocks
+    bitcoind.faucet();
+
     let db = testing::storage::new_test_database().await;
     let context = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoind.client())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
 
     let block_observer = BlockObserver { context, bitcoin_blocks: () };
 
-    let chain_tip_block_hash = rpc.get_best_block_hash().unwrap();
+    let chain_tip_block_hash = client.get_best_block_hash().unwrap();
     let headers = block_observer
         .next_headers_to_process(chain_tip_block_hash)
         .await
@@ -984,11 +994,13 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
-    let (_, faucet) = regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let faucet = bitcoind.faucet();
+
     let db = testing::storage::new_test_database().await;
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoind.client())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
@@ -1039,7 +1051,7 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
+        bitcoin_blocks: bitcoind.zmq_block_hash_stream().await,
     };
 
     // In this test the signer set public keys start empty. When running
@@ -1208,13 +1220,16 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
-    let (_, faucet) = regtest::initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let faucet = bitcoind.faucet();
+
     let db = testing::storage::new_test_database().await;
     let verification_window = 5;
+
     let mut ctx = TestContext::builder()
         .modify_settings(|config| config.signer.dkg_verification_window = verification_window)
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoind.client())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
@@ -1265,7 +1280,7 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
+        bitcoin_blocks: bitcoind.zmq_block_hash_stream().await,
     };
 
     // In this test the signer set public keys start empty. When running

@@ -76,18 +76,21 @@ integration-env-up: emily-cdk-synth
 	docker compose --file docker/docker-compose.test.yml up -d
 
 integration-test:
-	cargo $(CARGO_FLAGS) nextest run --features "testing" $(CARGO_EXCLUDES) --test integration --no-fail-fast --test-threads 1
+	cargo $(CARGO_FLAGS) nextest --config-file nextest.toml run --features "testing" $(CARGO_EXCLUDES) --test integration --no-fail-fast
 
 integration-test-build:
 	cargo $(CARGO_FLAGS) test build --features "testing" $(CARGO_EXCLUDES) --test integration --no-run --locked
 
-integration-env-down:
+integration-docker-cleanup:
+	docker ps -aq --filter "name=sbtc-test-" | xargs -r docker rm -f
+
+integration-env-down: integration-docker-cleanup
 	docker compose --file docker/docker-compose.test.yml down -t 0 -v
 
 integration-env-build:
 	docker compose --file docker/docker-compose.test.yml build
 
-integration-test-full: integration-env-down integration-env-up integration-test integration-env-down
+integration-test-full: integration-env-down integration-env-up integration-test integration-env-down integration-docker-cleanup
 
 integration-env-up-ci: emily-cdk-synth
 	docker compose --file docker/docker-compose.ci.yml up --detach --quiet-pull
@@ -112,7 +115,7 @@ integration-env-down-ci:
 	@echo "killing emily server process..."
 	ps -ef | awk  '/[e]mily-server/{print $$2}' | xargs kill -9
 
-.PHONY: integration-env-up integration-test integration-test-build integration-env-up integration-test-full
+.PHONY: integration-env-up integration-test integration-test-build integration-env-up integration-test-full integration-docker-cleanup
 
 # ##############################################################################
 # DEVENV (development testing environment)
