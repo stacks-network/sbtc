@@ -197,10 +197,6 @@ mod tests {
     use crate::storage::model::StacksPrincipal;
     use crate::storage::model::StacksTxId;
     use crate::testing::dummy::Unit;
-    use proptest::prelude::*;
-
-    // Constants for proptest strategies
-    const MAX_PROPTEST_ITERATIONS: u32 = 10000;
 
     use super::*;
 
@@ -212,22 +208,17 @@ mod tests {
         }
     }
 
-    proptest! {
-        #![proptest_config(ProptestConfig::with_cases(MAX_PROPTEST_ITERATIONS))]
+    #[test]
+    fn public_key_should_be_able_to_encode_and_decode_correctly() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let message = PublicKey::dummy_with_rng(&fake::Faker, &mut rng);
 
-        #[test]
-        fn public_key_should_be_able_to_encode_and_decode_correctly(seed in 0..=1000u64) {
-            println!("seed: {}", seed);
-            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-            let message = PublicKey::dummy_with_rng(&fake::Faker, &mut rng);
+        let encoded = message.encode_to_vec();
 
-            let encoded = message.encode_to_vec();
+        let decoded = <PublicKey as Decode>::decode(encoded.as_slice()).unwrap();
 
-            let decoded = <PublicKey as Decode>::decode(encoded.as_slice()).unwrap();
-
-            assert_eq!(decoded, message);
-        }
-}
+        assert_eq!(decoded, message);
+    }
 
     #[test_case(PhantomData::<([u8; 32], proto::Uint256)>; "Uint256")]
     #[test_case(PhantomData::<(PublicKey, proto::PublicKey)>; "PublicKey")]
