@@ -1469,7 +1469,7 @@ mod tests {
             // chain_tip_height.
             bitcoin_block_height: 0.into(),
         },
-        // This is partScriptBuf::new() of sBTC consensus.
+        // This is part of sBTC consensus.
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS.into(),
         // This is set by Emily.
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
