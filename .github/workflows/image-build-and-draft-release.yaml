@@ -16,7 +16,6 @@ permissions:
 ## Define which docker arch to build for
 env:
   docker_platforms: "linux/amd64"
-  docker-org: blockstack
   latest_release: $(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
 
 concurrency:
@@ -110,7 +109,7 @@ jobs:
 
       - name: Download artifact attestation 
         run: |
-          gh attestation download oci://${{ env.ghcr_org }}/sbtc:${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }} -R stacks-sbtc/sbtc
+          gh attestation download oci://${{ env.ghcr_org }}/sbtc:${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }} -R ${{ github.repository_owner }}/sbtc
           
           # Rename the attestation bundle (replace ":" with "_")
           ATTESTATION_FILE="$(echo "${{ steps.docker_build.outputs.digest }}.jsonl" | tr ':' '_')"
