@@ -22,8 +22,6 @@ env:
 
 jobs:
 
-  
-
   # Runs various lints and checks for the project, including Rustfmt, Clippy,
   # Protobuf lints, and pnpm lints.
   lint:
