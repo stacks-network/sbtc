@@ -22,6 +22,8 @@ env:
 
 jobs:
 
+  
+
   # Runs various lints and checks for the project, including Rustfmt, Clippy,
   # Protobuf lints, and pnpm lints.
   lint:
@@ -45,6 +47,7 @@ jobs:
         with:
           components: clippy, rustfmt
           cache-key: "rust-tests"
+      - uses: arduino/setup-protoc@v3
       - name: Install Package Dependencies
         run: make install
       - name: Lint (Rustfmt)
@@ -78,6 +81,7 @@ jobs:
       - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
+      - uses: arduino/setup-protoc@v3
       - name: Build Tests
         run: make test-build
       - name: Create Nextest Archives
@@ -106,6 +110,7 @@ jobs:
       - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
+      - uses: arduino/setup-protoc@v3
       - name: Install Package Dependencies
         run: make install
       - name: Download Nextest Archives
