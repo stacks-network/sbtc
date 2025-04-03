@@ -478,7 +478,7 @@ mod test {
             recipient: script_pubkey,
             txid: StacksTxid(random()),
             block_id: StacksBlockId::from_hex(&stacks_chaintip.block_hash).unwrap(),
-            sender: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
+            sender: PrincipalData::Standard(StandardPrincipalData::transient()),
             block_height: random(),
         };
 

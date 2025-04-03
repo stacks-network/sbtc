@@ -368,7 +368,7 @@ fn op_csv_disabled() {
     // the pushed data is within the limits, so we have to do this dance.
     let locking_script: &PushBytes = script_pubkey.as_bytes().try_into().unwrap();
     let script_sig = ScriptBuf::builder()
-        .push_slice(&locking_script)
+        .push_slice(locking_script)
         .into_script();
 
     let tx3 = Transaction {

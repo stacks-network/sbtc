@@ -1007,8 +1007,7 @@ impl super::DbRead for SharedStore {
 
         let withdrawal_signers: Vec<_> = store
             .withdrawal_request_to_signers
-            .iter()
-            .map(|(_, signers)| signers)
+            .values()
             .flatten()
             .filter(|signer| {
                 stacks_blocks_in_context.contains(&signer.block_hash)
