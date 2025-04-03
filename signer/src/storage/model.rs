@@ -1386,6 +1386,18 @@ macro_rules! implement_from {
     };
 }
 
+/// Helper for [`implement_int!`] macro. Implements conversion from integer types to int wrapper types.
+#[macro_export]
+macro_rules! implement_back_from {
+    ($type:ident, $inner:ty, $($int:ty),*) => {
+        $(impl From<$type> for $int {
+            fn from(value: $type) -> Self {
+                *value as $int
+            }
+        })*
+    };
+}
+
 /// Helper for [`implement_int!`] macro. Implements special arithmetic methods for integer wrapper types.
 #[macro_export]
 macro_rules! implement_special_methods {
@@ -1442,11 +1454,8 @@ macro_rules! implement_special_methods {
 macro_rules! implement_int {
     ($type:ident, $inner:ty) => {
         $crate::implement_from!($type, $inner, u8, u16, u32, u64, u128, usize, i32);
-        impl From<$type> for $inner {
-            fn from(value: $type) -> Self {
-                value.0
-            }
-        }
+        $crate::implement_back_from!($type, $inner, u64, u128);
+
         impl std::fmt::Display for $type {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", self.0)

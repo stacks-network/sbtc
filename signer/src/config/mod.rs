@@ -800,7 +800,7 @@ mod tests {
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(
             settings.signer.dkg_min_bitcoin_block_height,
-            Some(BitcoinBlockHeight::from(42))
+            Some(42.into())
         );
     }
 
