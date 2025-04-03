@@ -997,7 +997,7 @@ impl WithdrawalRequestReport {
             return WithdrawalValidationResult::RequestNotFinal;
         }
 
-        if block_wait > WITHDRAWAL_BLOCKS_EXPIRY.into() {
+        if block_wait > WITHDRAWAL_BLOCKS_EXPIRY {
             return WithdrawalValidationResult::RequestExpired;
         }
 
