@@ -4,18 +4,6 @@ use std::collections::HashSet;
 use std::ops::Deref as _;
 use std::sync::LazyLock;
 
-use bitcoin::absolute::LockTime;
-use bitcoin::consensus::Encodable as _;
-use bitcoin::opcodes::all::OP_RETURN;
-use bitcoin::script::Instruction;
-use bitcoin::script::PushBytesBuf;
-use bitcoin::sighash::Prevouts;
-use bitcoin::sighash::SighashCache;
-use bitcoin::taproot::LeafVersion;
-use bitcoin::taproot::NodeInfo;
-use bitcoin::taproot::Signature;
-use bitcoin::taproot::TaprootSpendInfo;
-use bitcoin::transaction::Version;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
@@ -29,6 +17,18 @@ use bitcoin::TxOut;
 use bitcoin::Txid;
 use bitcoin::Weight;
 use bitcoin::Witness;
+use bitcoin::absolute::LockTime;
+use bitcoin::consensus::Encodable as _;
+use bitcoin::opcodes::all::OP_RETURN;
+use bitcoin::script::Instruction;
+use bitcoin::script::PushBytesBuf;
+use bitcoin::sighash::Prevouts;
+use bitcoin::sighash::SighashCache;
+use bitcoin::taproot::LeafVersion;
+use bitcoin::taproot::NodeInfo;
+use bitcoin::taproot::Signature;
+use bitcoin::taproot::TaprootSpendInfo;
+use bitcoin::transaction::Version;
 use bitvec::array::BitArray;
 use bitvec::field::BitField;
 use sbtc::idpack::BitmapSegmenter;
@@ -36,13 +36,15 @@ use sbtc::idpack::Decodable as _;
 use sbtc::idpack::Encodable as _;
 use sbtc::idpack::Segmenter;
 use sbtc::idpack::Segments;
-use secp256k1::XOnlyPublicKey;
 use secp256k1::SECP256K1;
+use secp256k1::XOnlyPublicKey;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::bitcoin::packaging::compute_optimal_packages;
+use crate::DEPOSIT_DUST_LIMIT;
+use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 use crate::bitcoin::packaging::Weighted;
+use crate::bitcoin::packaging::compute_optimal_packages;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::context::SbtcLimits;
 use crate::error::Error;
@@ -60,8 +62,6 @@ use crate::storage::model::TxOutputType;
 use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
 use crate::storage::model::WithdrawalTxOutput;
-use crate::DEPOSIT_DUST_LIMIT;
-use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -1528,8 +1528,10 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
             .collect();
 
         // The op return script must be a OP_RETURN and a push bytes
-        let [Ok(Instruction::Op(OP_RETURN)), Ok(Instruction::PushBytes(push_bytes))] =
-            op_return_instructions[..]
+        let [
+            Ok(Instruction::Op(OP_RETURN)),
+            Ok(Instruction::PushBytes(push_bytes)),
+        ] = op_return_instructions[..]
         else {
             return Err(Error::SbtcTxOpReturnFormatError);
         };
@@ -1638,13 +1640,13 @@ mod tests {
     use std::sync::atomic::AtomicU64;
 
     use super::*;
+    use bitcoin::BlockHash;
+    use bitcoin::CompressedPublicKey;
+    use bitcoin::Txid;
     use bitcoin::hashes::Hash as _;
     use bitcoin::key::TapTweak;
     use bitcoin::opcodes::all::OP_RETURN;
     use bitcoin::script::Instruction;
-    use bitcoin::BlockHash;
-    use bitcoin::CompressedPublicKey;
-    use bitcoin::Txid;
     use clarity::vm::types::PrincipalData;
     use fake::Fake as _;
     use model::SignerVote;
@@ -1658,11 +1660,11 @@ mod tests {
     use stacks_common::types::chainstate::StacksAddress;
     use test_case::test_case;
 
+    use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
+    use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
     use crate::context::RollingWithdrawalLimits;
     use crate::testing;
     use crate::testing::btc::base_signer_transaction;
-    use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
-    use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 
     /// The maximum virtual size of a transaction package in v-bytes.
     const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;

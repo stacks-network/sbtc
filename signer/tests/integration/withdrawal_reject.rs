@@ -8,25 +8,25 @@ use signer::stacks::contracts::AsContractCall as _;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::ReqContext;
 use signer::stacks::contracts::WithdrawalRejectErrorMsg;
+use signer::storage::DbWrite;
 use signer::storage::model;
 use signer::storage::model::BitcoinTxSigHash;
 use signer::storage::postgres::PgStore;
-use signer::storage::DbWrite;
 use signer::testing;
 
 use fake::Fake;
 use rand::SeedableRng;
-use signer::testing::context::*;
-use signer::testing::storage::DbReadTestExt;
 use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
+use signer::testing::context::*;
+use signer::testing::storage::DbReadTestExt;
 
-use crate::setup::fetch_canonical_bitcoin_blockchain;
-use crate::setup::set_withdrawal_completed;
-use crate::setup::set_withdrawal_incomplete;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup2;
+use crate::setup::fetch_canonical_bitcoin_blockchain;
+use crate::setup::set_withdrawal_completed;
+use crate::setup::set_withdrawal_incomplete;
 
 /// Create a "proper" [`RejectWithdrawalV1`] object and context with the
 /// given information. If the information here is correct then the returned

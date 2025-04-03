@@ -3,7 +3,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::transaction::Version;
 use bitcoin::{AddressType, Amount, BlockHash, ScriptBuf, Sequence, Witness};
 use bitcoincore_rpc::RpcApi as _;
-use sbtc::testing::regtest::{self, p2wpkh_sign_transaction, AsUtxo as _, Recipient};
+use sbtc::testing::regtest::{self, AsUtxo as _, Recipient, p2wpkh_sign_transaction};
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::{BitcoinInteract, TransactionLookupHint};
 use signer::util::ApiFallbackClient;
@@ -32,11 +32,10 @@ async fn test_get_block_works() {
 
     let url: Url = "http://devnet:devnet@localhost:18443".parse().unwrap();
 
-    let client =
-        ApiFallbackClient::<BitcoinCoreClient>::new(vec![
-            BitcoinCoreClient::try_from(&url).unwrap()
-        ])
-        .unwrap();
+    let client = ApiFallbackClient::<BitcoinCoreClient>::new(vec![
+        BitcoinCoreClient::try_from(&url).unwrap(),
+    ])
+    .unwrap();
 
     // Double-check that an all-zero block doesn't return an error or something else unexpected.
     let block = client.get_block(&BlockHash::all_zeros()).await;

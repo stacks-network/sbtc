@@ -92,19 +92,19 @@ impl WithdrawalEntry {
 
         // Verify that the latest event is the current one shown in the entry.
         if self.last_update_block_hash != latest_event.stacks_block_hash {
-            return Err(Error::Debug(
-                format!("last update block hash is inconsistent between history and top level data. {stringy_self:?}")
-            ));
+            return Err(Error::Debug(format!(
+                "last update block hash is inconsistent between history and top level data. {stringy_self:?}"
+            )));
         }
         if self.last_update_height != latest_event.stacks_block_height {
-            return Err(Error::Debug(
-                format!("last update block height is inconsistent between history and top level data. {stringy_self:?}")
-            ));
+            return Err(Error::Debug(format!(
+                "last update block height is inconsistent between history and top level data. {stringy_self:?}"
+            )));
         }
         if self.status != (&latest_event.status).into() {
-            return Err(Error::Debug(
-                format!("most recent status is inconsistent between history and top level data. {stringy_self:?}")
-            ));
+            return Err(Error::Debug(format!(
+                "most recent status is inconsistent between history and top level data. {stringy_self:?}"
+            )));
         }
         Ok(())
     }
