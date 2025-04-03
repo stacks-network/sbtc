@@ -834,7 +834,10 @@ impl DepositRequestReport {
 
         match self.lock_time {
             LockTime::Blocks(height) => {
-                let max_age = height.value().saturating_sub(DEPOSIT_LOCKTIME_BLOCK_BUFFER).into();
+                let max_age = height
+                    .value()
+                    .saturating_sub(DEPOSIT_LOCKTIME_BLOCK_BUFFER)
+                    .into();
                 if deposit_age >= max_age {
                     return InputValidationResult::LockTimeExpiry;
                 }
