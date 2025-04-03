@@ -5821,6 +5821,7 @@ dependencies = [
  "strum",
  "tempfile",
  "test-case",
+ "test-helper",
  "test-log",
  "testing-emily-client",
  "thiserror 2.0.11",
@@ -6441,6 +6442,15 @@ dependencies = [
  "quote",
  "syn 2.0.87",
  "test-case-core",
+]
+
+[[package]]
+name = "test-helper"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
 ]
 
 [[package]]

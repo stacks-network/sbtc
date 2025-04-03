@@ -68,6 +68,12 @@ use signer::testing::dummy::SignerSetConfig;
 use signer::testing::storage::model::TestData;
 use signer::testing::wallet::ContractCallWrapper;
 
+use test_helper::test_async as run_test_async;
+use test_helper::test as run_test;
+
+use rand::rngs::OsRng;
+use rand::RngCore;
+
 use fake::Fake;
 use rand::SeedableRng;
 use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
@@ -3242,10 +3248,10 @@ async fn should_get_signer_utxo_donations() {
 /// Check the expected report if the deposit request and transaction are in
 /// the database, but this signers vote is missing and the transaction is
 /// confirmed on the wrong blockchain.
-#[tokio::test]
-async fn deposit_report_with_only_deposit_request() {
+run_test_async!(deposit_report_with_only_deposit_request);
+async fn deposit_report_with_only_deposit_request(seed: u64) {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(20);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
     // We only want the blockchain to be generated
     let num_signers = 3;
