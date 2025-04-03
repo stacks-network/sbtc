@@ -23,11 +23,11 @@ build: blocklist-client-codegen emily-client-codegen contracts
 	cargo $(CARGO_FLAGS) build --all-targets $(CARGO_EXCLUDES) ${CARGO_BUILD_ARGS}
 
 test:
-	cargo $(CARGO_FLAGS) nextest run --lib $(CARGO_EXCLUDES) --no-fail-fast ${CARGO_BUILD_ARGS}
+	cargo $(CARGO_FLAGS) nextest run --features "testing" --lib $(CARGO_EXCLUDES) --no-fail-fast ${CARGO_BUILD_ARGS}
 	pnpm --recursive test
 
 test-build:
-	cargo $(CARGO_FLAGS) test build $(CARGO_EXCLUDES) --no-run --locked ${CARGO_BUILD_ARGS}
+	cargo $(CARGO_FLAGS) test build --features "testing"  $(CARGO_EXCLUDES) --no-run --locked ${CARGO_BUILD_ARGS}
 
 lint:
 	cargo $(CARGO_FLAGS) fmt --all -- --check
@@ -55,8 +55,8 @@ NEXTEST_SERIAL_ARCHIVE_FILE := target/nextest/nextest-archive-serial.tar.zst
 
 # Creates nextest archives
 nextest-archive:
-	cargo $(CARGO_FLAGS) nextest archive $(CARGO_EXCLUDES) --lib --archive-file $(NEXTEST_ARCHIVE_FILE) ${CARGO_BUILD_ARGS}
-	cargo $(CARGO_FLAGS) nextest archive $(CARGO_EXCLUDES) --archive-file $(NEXTEST_SERIAL_ARCHIVE_FILE) --test integration ${CARGO_BUILD_ARGS}
+	cargo $(CARGO_FLAGS) nextest archive --features "testing" $(CARGO_EXCLUDES) --lib --archive-file $(NEXTEST_ARCHIVE_FILE) ${CARGO_BUILD_ARGS}
+	cargo $(CARGO_FLAGS) nextest archive --features "testing" $(CARGO_EXCLUDES) --archive-file $(NEXTEST_SERIAL_ARCHIVE_FILE) --test integration ${CARGO_BUILD_ARGS}
 
 # Runs nextest archives
 nextest-archive-run:
@@ -76,10 +76,10 @@ integration-env-up: emily-cdk-synth
 	docker compose --file docker/docker-compose.test.yml up -d
 
 integration-test:
-	cargo $(CARGO_FLAGS) nextest run $(CARGO_EXCLUDES) --test integration --no-fail-fast --test-threads 1
+	cargo $(CARGO_FLAGS) nextest run --features "testing" $(CARGO_EXCLUDES) --test integration --no-fail-fast --test-threads 1
 
 integration-test-build:
-	cargo $(CARGO_FLAGS) test build $(CARGO_EXCLUDES) --test integration --no-run --locked
+	cargo $(CARGO_FLAGS) test build --features "testing" $(CARGO_EXCLUDES) --test integration --no-run --locked
 
 integration-env-down:
 	docker compose --file docker/docker-compose.test.yml down -t 0 -v
@@ -96,12 +96,14 @@ integration-env-up-ci: emily-cdk-synth
 		OUTPUT_CDK_TEMPLATE=./emily/cdk/cdk.out/EmilyStack.devenv.template.json \
 		LOCAL_LAMBDA_PATH=empty.zip \
 		TRUSTED_REORG_API_KEY=testApiKey \
+		DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS \
 		python3 docker/sbtc/emily-aws-setup/initialize.py
 	cargo $(CARGO_FLAGS) build --bin emily-server
 	AWS_ACCESS_KEY_ID=xxxxxxxxxxxx \
 		AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx \
 		AWS_REGION=us-west-2 \
 		TRUSTED_REORG_API_KEY=testApiKey \
+		DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS \
 		cargo $(CARGO_FLAGS) run --bin emily-server -- \
 			--host 127.0.0.1 --port 3031 --dynamodb-endpoint http://localhost:8000 > ./target/emily-server.log 2>&1 &
 
@@ -158,6 +160,7 @@ $(EMILY_CDK_TEMPLATE): $(EMILY_CDK_SOURCE_FILES)
 	AWS_STAGE=local \
 	TABLES_ONLY=true \
 	TRUSTED_REORG_API_KEY=testApiKey \
+	DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS \
 	pnpm --filter $(EMILY_CDK_PROJECT_NAME) run synth
 
 emily-cdk-synth: $(EMILY_CDK_TEMPLATE)

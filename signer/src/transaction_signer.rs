@@ -29,8 +29,8 @@ use crate::message::BitcoinPreSignAck;
 use crate::message::Payload;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::WstsMessageId;
-use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
+use crate::metrics::Metrics;
 use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
 use crate::stacks::contracts::AsContractCall as _;
@@ -39,18 +39,18 @@ use crate::stacks::contracts::ReqContext;
 use crate::stacks::contracts::StacksTx;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::DbRead;
+use crate::storage::DbWrite as _;
 use crate::storage::model;
 use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::SigHash;
-use crate::storage::DbRead;
-use crate::storage::DbWrite as _;
 use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::SignerStateMachine;
 use crate::wsts_state_machine::StateMachineId;
 use crate::wsts_state_machine::WstsCoordinator;
 
-use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
+use bitcoin::hashes::Hash as _;
 use futures::StreamExt;
 use lru::LruCache;
 use rand::rngs::OsRng;
@@ -488,6 +488,15 @@ where
         chain_tip: &model::BitcoinBlockRef,
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
+        // Ensure that the Stacks fee is within the acceptable range.
+        let highest_acceptable_fee = self.context.config().signer.stacks_fees_max_ustx.get();
+        if request.tx_fee > highest_acceptable_fee {
+            return Err(Error::StacksFeeLimitExceeded(
+                request.tx_fee,
+                highest_acceptable_fee,
+            ));
+        }
+
         let db = self.context.get_storage();
         let public_key = self.signer_public_key();
 
@@ -1274,15 +1283,21 @@ where
         // Determine if the state machine is in an end-state.
         let is_end_state = match state_machine.state() {
             dkg::verification::State::Success(_) => {
-                tracing::warn!("🔐 the DKG verification signing round already completed for this aggregate key");
+                tracing::warn!(
+                    "🔐 the DKG verification signing round already completed for this aggregate key"
+                );
                 true
             }
             dkg::verification::State::Error => {
-                tracing::warn!("🔐 the DKG verification state machine for this aggregate key is in a failed state and may not be used");
+                tracing::warn!(
+                    "🔐 the DKG verification state machine for this aggregate key is in a failed state and may not be used"
+                );
                 true
             }
             dkg::verification::State::Expired => {
-                tracing::warn!("🔐 the DKG verification state machine for this aggregate key is expired and the state machine may not be used");
+                tracing::warn!(
+                    "🔐 the DKG verification state machine for this aggregate key is expired and the state machine may not be used"
+                );
                 true
             }
             dkg::verification::State::Idle | dkg::verification::State::Signing => false,
@@ -1359,7 +1374,9 @@ where
                 self.dkg_verification_state_machines.pop(&state_machine_id);
 
                 // Perform verification of the signature.
-                tracing::info!("🔐 verifying that the signature can be used to spend a UTXO locked by the new aggregate key");
+                tracing::info!(
+                    "🔐 verifying that the signature can be used to spend a UTXO locked by the new aggregate key"
+                );
                 let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
 
                 match mock_tx.verify_signature(&signature) {
@@ -1622,7 +1639,7 @@ mod tests {
     use crate::emily_client::MockEmilyInteract;
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
-    use crate::storage::{model, DbWrite};
+    use crate::storage::{DbWrite, model};
     use crate::testing;
     use crate::testing::context::*;
 

@@ -577,6 +577,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Address not found",
             "content": {
@@ -1277,7 +1287,8 @@
         "tags": [
           "limits"
         ],
-        "summary": "Get limits handler.",
+        "summary": "Set limits handler.",
+        "description": "Note, that `available_to_withdraw` is not settable, but is calculated based on the other fields.\nValue of `available_to_withdraw` passed to this endpoint will be ignored.",
         "operationId": "setLimits",
         "requestBody": {
           "content": {
@@ -1568,6 +1579,98 @@
         }
       }
     },
+    "/new_block": {
+      "post": {
+        "tags": [
+          "new_block"
+        ],
+        "summary": "Get limits handler.",
+        "operationId": "newBlock",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewBlockEventRaw"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "New Block event received successfully"
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
     "/withdrawal": {
       "get": {
         "tags": [
@@ -1786,6 +1889,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Address not found",
             "content": {
@@ -1858,7 +1971,7 @@
           {
             "name": "recipient",
             "in": "path",
-            "description": "the recpieint to search by when getting all withdrawals.",
+            "description": "The recipient's hex-encoded scriptPubKey, used to filter withdrawals.",
             "required": true,
             "schema": {
               "type": "string"
@@ -1957,7 +2070,7 @@
           {
             "name": "recipient",
             "in": "path",
-            "description": "the recpieint to search by when getting all withdrawals.",
+            "description": "The recipient's hex-encoded scriptPubKey, used to filter withdrawals.",
             "required": true,
             "schema": {
               "type": "string"
@@ -2117,6 +2230,20 @@
             "description": "Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.",
             "nullable": true,
             "minimum": 0
+          },
+          "rollingWithdrawalBlocks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of blocks that define the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "rollingWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum total sBTC that can be withdrawn within the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
           }
         }
       },
@@ -2128,6 +2255,13 @@
           "stacksBlockHash"
         ],
         "properties": {
+          "bitcoinBlockHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bitcoin block height",
+            "nullable": true,
+            "minimum": 0
+          },
           "stacksBlockHash": {
             "type": "string",
             "description": "Stacks block hash at the height."
@@ -2183,8 +2317,10 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
-          "parameters"
+          "parameters",
+          "txid"
         ],
         "properties": {
           "amount": {
@@ -2198,13 +2334,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's Bitcoin hex-encoded scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",
@@ -2215,6 +2355,10 @@
             "format": "int64",
             "description": "The stacks block hash in which this request id was initiated.",
             "minimum": 0
+          },
+          "txid": {
+            "type": "string",
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2379,8 +2523,6 @@
         "required": [
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
-          "lastUpdateHeight",
-          "lastUpdateBlockHash",
           "status",
           "statusMessage"
         ],
@@ -2402,16 +2544,6 @@
               }
             ],
             "nullable": true
-          },
-          "lastUpdateBlockHash": {
-            "type": "string",
-            "description": "The most recent Stacks block hash the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
-          },
-          "lastUpdateHeight": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The most recent Stacks block height the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
-            "minimum": 0
           },
           "status": {
             "$ref": "#/components/schemas/Status"
@@ -2568,6 +2700,13 @@
               "$ref": "#/components/schemas/AccountLimits"
             }
           },
+          "availableToWithdraw": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total amount sBTC still available for withdrawals in current window. All withdrawals except rejected\ncounted here",
+            "nullable": true,
+            "minimum": 0
+          },
           "pegCap": {
             "type": "integer",
             "format": "int64",
@@ -2595,8 +2734,26 @@
             "description": "Per withdrawal cap. If none then there is no cap.",
             "nullable": true,
             "minimum": 0
+          },
+          "rollingWithdrawalBlocks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of blocks that define the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "rollingWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum total sBTC that can be withdrawn within the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
           }
         }
+      },
+      "NewBlockEventRaw": {
+        "type": "string",
+        "description": "The raw payload of a new block event from a stacks node.\nThis is the raw JSON string that is sent to the webhook.\nIdeally, NewBlockEvent would be used directly, but because of the\nthe imported data types, we can't derive ToSchema for it to be used\nin the OpenAPI spec."
       },
       "Status": {
         "type": "string",
@@ -2681,12 +2838,14 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
           "status",
           "statusMessage",
-          "parameters"
+          "parameters",
+          "txid"
         ],
         "properties": {
           "amount": {
@@ -2718,13 +2877,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's hex-encoded Bitcoin scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's hex-encoded Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",
@@ -2742,6 +2905,10 @@
           "statusMessage": {
             "type": "string",
             "description": "The status message of the withdrawal."
+          },
+          "txid": {
+            "type": "string",
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2753,10 +2920,12 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
-          "status"
+          "status",
+          "txid"
         ],
         "properties": {
           "amount": {
@@ -2777,13 +2946,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's hex-encoded Bitcoin scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's hex-encoded Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",
@@ -2797,6 +2970,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/Status"
+          },
+          "txid": {
+            "type": "string",
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2820,8 +2997,6 @@
         "description": "A singular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
         "required": [
           "requestId",
-          "lastUpdateHeight",
-          "lastUpdateBlockHash",
           "status",
           "statusMessage"
         ],
@@ -2833,16 +3008,6 @@
               }
             ],
             "nullable": true
-          },
-          "lastUpdateBlockHash": {
-            "type": "string",
-            "description": "The most recent Stacks block hash the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
-          },
-          "lastUpdateHeight": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The most recent Stacks block height the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
-            "minimum": 0
           },
           "requestId": {
             "type": "integer",

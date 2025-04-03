@@ -59,8 +59,8 @@
 //! // Verify the signed message.
 //! assert!(signed_msg.verify());
 
-use prost::bytes::Buf as _;
 use prost::Message as _;
+use prost::bytes::Buf as _;
 use sha2::Digest as _;
 
 use crate::codec::ProtoSerializable;
@@ -263,8 +263,8 @@ mod tests {
     use std::marker::PhantomData;
 
     use fake::Fake as _;
-    use rand::rngs::OsRng;
     use rand::SeedableRng as _;
+    use rand::rngs::OsRng;
 
     use crate::codec::Encode as _;
     use crate::ecdsa::SignEcdsa;

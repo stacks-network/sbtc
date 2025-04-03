@@ -2,17 +2,18 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::ops::Deref;
 
-use bitcoin::consensus::Encodable as _;
-use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
+use bitcoin::consensus::Encodable as _;
+use bitcoin::hashes::Hash as _;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::types::chainstate::StacksAddress;
 use clarity::types::chainstate::StacksBlockId;
 use clarity::vm::types::PrincipalData;
 
+use emily_client::apis::configuration::Configuration as EmilyApiConfiguration;
 use fake::Fake;
 use fake::Faker;
 use rand::rngs::OsRng;
@@ -21,6 +22,7 @@ use sbtc::deposits::DepositInfo;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Faucet;
 use sbtc::testing::regtest::Recipient;
+use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
@@ -40,6 +42,8 @@ use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
 use signer::stacks::api::MockStacksInteract;
+use signer::storage::DbRead;
+use signer::storage::DbWrite as _;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlock;
 use signer::storage::model::BitcoinBlockHash;
@@ -51,12 +55,11 @@ use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::postgres::PgStore;
-use signer::storage::DbRead;
-use signer::storage::DbWrite as _;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
 use signer::testing::dummy::Unit;
-use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
+use testing_emily_client::apis::configuration::ApiKey as TestingEmilyApiKey;
+use testing_emily_client::apis::configuration::Configuration as TestingEmilyApiConfiguration;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
@@ -71,6 +74,27 @@ impl AsBlockRef for bitcoincore_rpc_json::GetBlockHeaderResult {
         BitcoinBlockRef {
             block_hash: self.hash.into(),
             block_height: self.height as u64,
+        }
+    }
+}
+
+pub trait IntoEmilyTestingConfig {
+    fn as_testing(&self) -> TestingEmilyApiConfiguration;
+}
+
+impl IntoEmilyTestingConfig for EmilyApiConfiguration {
+    fn as_testing(&self) -> TestingEmilyApiConfiguration {
+        TestingEmilyApiConfiguration {
+            base_path: self.base_path.clone(),
+            user_agent: self.user_agent.clone(),
+            client: self.client.clone(),
+            basic_auth: self.basic_auth.clone(),
+            oauth_access_token: self.oauth_access_token.clone(),
+            bearer_access_token: self.bearer_access_token.clone(),
+            api_key: self.api_key.clone().map(|key| TestingEmilyApiKey {
+                prefix: key.prefix.clone(),
+                key: key.key.clone(),
+            }),
         }
     }
 }
@@ -304,7 +328,7 @@ impl TestSweepSetup {
             db.write_tx_prevout(&prevout).await.unwrap();
         }
 
-        for output in self.sweep_tx_info.to_outputs(&signer_script_pubkeys) {
+        for output in self.sweep_tx_info.to_tx_outputs(&signer_script_pubkeys) {
             db.write_tx_output(&output).await.unwrap();
         }
     }
@@ -1099,7 +1123,7 @@ impl TestSweepSetup2 {
             db.write_tx_prevout(&prevout).await.unwrap();
         }
 
-        for output in sweep.tx_info.to_outputs(&signer_script_pubkeys) {
+        for output in sweep.tx_info.to_tx_outputs(&signer_script_pubkeys) {
             db.write_tx_output(&output).await.unwrap();
         }
     }

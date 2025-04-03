@@ -1,7 +1,7 @@
 //! Handlers for chainstate endpoints.
 use crate::{
     api::{
-        handlers::internal::{execute_reorg_handler, ExecuteReorgRequest},
+        handlers::internal::{ExecuteReorgRequest, execute_reorg_handler},
         models::chainstate::Chainstate,
     },
     common::error::{Error, Inconsistency},
@@ -10,7 +10,7 @@ use crate::{
 };
 use tracing::{debug, info, instrument, warn};
 use warp::http::StatusCode;
-use warp::reply::{json, with_status, Reply};
+use warp::reply::{Reply, json, with_status};
 
 // TODO(TBD): Add conflict handling to the chainstate endpoint.
 
@@ -97,7 +97,7 @@ pub async fn get_chainstate_at_height(
     ),
     security(("ApiGatewayKey" = []))
 )]
-#[instrument(skip(context))]
+#[instrument(skip(context, api_key))]
 pub async fn set_chainstate(
     context: EmilyContext,
     api_key: String,
@@ -143,7 +143,7 @@ pub async fn set_chainstate(
     ),
     security(("ApiGatewayKey" = []))
 )]
-#[instrument(skip(context))]
+#[instrument(skip(context, api_key))]
 pub async fn update_chainstate(
     context: EmilyContext,
     api_key: String,

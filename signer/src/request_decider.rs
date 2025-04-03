@@ -26,12 +26,12 @@ use crate::message::SignerDepositDecision;
 use crate::message::SignerMessage;
 use crate::message::SignerWithdrawalDecision;
 use crate::network::MessageTransfer;
+use crate::storage::DbRead as _;
+use crate::storage::DbWrite as _;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::DepositSigner;
 use crate::storage::model::WithdrawalSigner;
-use crate::storage::DbRead as _;
-use crate::storage::DbWrite as _;
 
 use futures::StreamExt;
 use futures::TryStreamExt;
@@ -53,6 +53,9 @@ pub struct RequestDeciderEventLoop<C, N, B> {
     /// How many bitcoin blocks back from the chain tip the signer will look for deposit
     /// decisions to retry to propagate.
     pub deposit_decisions_retry_window: u16,
+    /// How many bitcoin blocks back from the chain tip the signer will look for withdrawal
+    /// decisions to retry to propagate.
+    pub withdrawal_decisions_retry_window: u16,
 }
 
 /// This function defines which messages this event loop is interested
@@ -176,6 +179,21 @@ where
                 });
         }
 
+        let withdrawal_decisions_to_retry = db
+            .get_withdrawal_signer_decisions(
+                &chain_tip,
+                self.withdrawal_decisions_retry_window,
+                &signer_public_key,
+            )
+            .await?;
+
+        let _ = self
+            .handle_withdrawal_decisions_to_retry(withdrawal_decisions_to_retry, &chain_tip)
+            .await
+            .inspect_err(
+                |error| tracing::warn!(%error, "error handling withdrawal decisions to retry"),
+            );
+
         let withdraw_requests = db
             .get_pending_withdrawal_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
@@ -277,6 +295,24 @@ where
         Ok(())
     }
 
+    /// Send the given withdrawal decisions to the other signers for redundancy.
+    #[tracing::instrument(skip_all)]
+    pub async fn handle_withdrawal_decisions_to_retry(
+        &mut self,
+        decisions: Vec<model::WithdrawalSigner>,
+        chain_tip: &BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        for decision in decisions.into_iter().map(SignerWithdrawalDecision::from) {
+            let _ = self
+                .send_message(decision, chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(%error, "error sending withdrawal decision to retry, skipping");
+                });
+        }
+        Ok(())
+    }
+
     /// Send the given deposit decisions to the other signers for redundancy.
     #[tracing::instrument(skip_all)]
     pub async fn handle_deposit_decisions_to_retry(
@@ -309,7 +345,7 @@ where
 
         let msg = SignerWithdrawalDecision {
             request_id: withdrawal_request.request_id,
-            block_hash: withdrawal_request.block_hash.into_bytes(),
+            block_hash: withdrawal_request.block_hash,
             accepted: is_accepted,
             txid: withdrawal_request.txid,
         };
@@ -345,12 +381,22 @@ where
             return Ok(true);
         };
 
-        let result = client
-            .can_accept(&req.sender_address.to_string())
-            .await
-            .unwrap_or(false);
+        let network = bitcoin::Network::from(self.context.config().signer.network);
+        let receiver_address = bitcoin::Address::from_script(&req.recipient, network.params())
+            .map_err(|err| {
+                Error::WithdrawalBitcoinAddressFromScript(
+                    err,
+                    req.request_id,
+                    req.block_hash.into(),
+                )
+            })?;
 
-        Ok(result)
+        let can_accept = client
+            .can_accept(&receiver_address.to_string())
+            .await
+            .inspect_err(|error| tracing::error!(%error, "blocklist client issue"))?;
+
+        Ok(can_accept)
     }
 
     async fn can_accept_deposit_request(&self, req: &model::DepositRequest) -> Result<bool, Error> {
@@ -369,7 +415,7 @@ where
             .iter()
             .map(|script_pubkey| bitcoin::Address::from_script(script_pubkey, params))
             .collect::<Result<Vec<bitcoin::Address>, _>>()
-            .map_err(|err| Error::BitcoinAddressFromScript(err, req.outpoint()))?;
+            .map_err(|err| Error::DepositBitcoinAddressFromScript(err, req.outpoint()))?;
 
         let responses = futures::stream::iter(&addresses)
             .then(|address| async { client.can_accept(&address.to_string()).await })
@@ -455,7 +501,7 @@ where
     ) -> Result<(), Error> {
         let signer_decision = WithdrawalSigner {
             request_id: decision.request_id,
-            block_hash: decision.block_hash.into(),
+            block_hash: decision.block_hash,
             signer_pub_key,
             is_accepted: decision.accepted,
             txid: decision.txid,
@@ -531,6 +577,7 @@ mod tests {
             context,
             context_window: 6,
             deposit_decisions_retry_window: 1,
+            withdrawal_decisions_retry_window: 1,
             num_signers: 7,
             signing_threshold: 5,
             test_model_parameters,

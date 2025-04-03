@@ -4,7 +4,7 @@ use crate::common::error::ErrorResponse;
 
 use std::convert::Infallible;
 use tracing::error;
-use warp::{http::StatusCode, Rejection, Reply};
+use warp::{Rejection, Reply, http::StatusCode};
 
 /// Chainstate handlers.
 pub mod chainstate;
@@ -16,6 +16,8 @@ pub mod health;
 pub mod internal;
 /// Limit handlers.
 pub mod limits;
+/// New block handlers.
+pub mod new_block;
 /// Testing handlers.
 #[cfg(feature = "testing")]
 pub mod testing;

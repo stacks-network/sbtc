@@ -1,14 +1,14 @@
 //! Test utilities for the transaction coordinator
 
 use std::cell::RefCell;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
+use crate::bitcoin::MockBitcoinInteract;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::utxo::SignerUtxo;
-use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
 use crate::context::RequestDeciderEvent;
 use crate::emily_client::MockEmilyInteract;
@@ -27,32 +27,31 @@ use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::StacksTx;
+use crate::storage::DbRead;
+use crate::storage::DbWrite;
 use crate::storage::model;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::ToLittleEndianOrder as _;
-use crate::storage::DbRead;
-use crate::storage::DbWrite;
 use crate::testing;
-use crate::testing::storage::model::TestData;
 use crate::testing::storage::DbReadTestExt as _;
+use crate::testing::storage::model::TestData;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
-use crate::transaction_coordinator::coordinator_public_key;
 use crate::transaction_coordinator::TxCoordinatorEventLoop;
+use crate::transaction_coordinator::coordinator_public_key;
 use bitcoin::hashes::Hash as _;
 
-use bitvec::array::BitArray;
-use bitvec::field::BitField as _;
 use blockstack_lib::chainstate::stacks::TransactionContractCall;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
+use clarity::vm::Value;
 use clarity::vm::types::BuffData;
 use clarity::vm::types::SequenceData;
-use clarity::vm::Value;
 use fake::Fake as _;
 use fake::Faker;
 use rand::SeedableRng as _;
+use rand::seq::IteratorRandom;
 
 use super::context::TestContext;
 use super::context::WrappedMock;
@@ -312,9 +311,11 @@ where
                 block_height = %withdrawal.bitcoin_block_height,
                 %max_processable_height,
                 "checking withdrawal");
-            assert!(withdrawals
-                .iter()
-                .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+            assert!(
+                withdrawals
+                    .iter()
+                    .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid)
+            );
         }
     }
 
@@ -364,14 +365,11 @@ where
 
         self.context
             .with_emily_client(|client| {
-                client
-                    .expect_accept_deposits()
-                    .times(1..)
-                    .returning(|_, _| {
-                        Box::pin(async {
-                            Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
-                        })
-                    });
+                client.expect_accept_deposits().times(1..).returning(|_| {
+                    Box::pin(async {
+                        Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
+                    })
+                });
             })
             .await;
 
@@ -514,14 +512,11 @@ where
 
         self.context
             .with_emily_client(|client| {
-                client
-                    .expect_accept_deposits()
-                    .times(1..)
-                    .returning(|_, _| {
-                        Box::pin(async {
-                            Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
-                        })
-                    });
+                client.expect_accept_deposits().times(1..).returning(|_| {
+                    Box::pin(async {
+                        Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
+                    })
+                });
             })
             .await;
 
@@ -672,19 +667,21 @@ where
             ..fake::Faker.fake_with_rng::<model::WithdrawalRequest, _>(&mut rng)
         };
 
+        // Too big outindex will make this test slow and don't really happen in practice
+        // Output index smaller than 2 is invalid in our case
+        let output_index: u32 = (2..200).choose(&mut rng).unwrap();
+
+        let mut output = vec![bitcoin::TxOut::NULL; output_index as usize];
+        output.push(bitcoin::TxOut {
+            value: bitcoin::Amount::from_sat(withdrawal_req.amount),
+            script_pubkey: bitcoin_aggregate_key.signers_script_pubkey(),
+        });
+
         // Create test data for the withdrawal sweep tx
         let sweep_block_hash = bitcoin::BlockHash::all_zeros();
         let sweep_tx = bitcoin::Transaction {
             input: vec![],
-            output: vec![
-                // Note: `assess_output_fee` expects a valid `vout` index to be at least the third output (index 2).
-                bitcoin::TxOut::NULL,
-                bitcoin::TxOut::NULL,
-                bitcoin::TxOut {
-                    value: bitcoin::Amount::from_sat(withdrawal_req.amount),
-                    script_pubkey: bitcoin_aggregate_key.signers_script_pubkey(),
-                },
-            ],
+            output,
             version: bitcoin::transaction::Version::TWO,
             lock_time: bitcoin::absolute::LockTime::ZERO,
         };
@@ -712,6 +709,7 @@ where
         };
 
         let withdrawal_req = model::SweptWithdrawalRequest {
+            output_index,
             request_id: withdrawal_req.request_id,
             txid: withdrawal_req.txid,
             block_hash: stacks_block.block_hash,
@@ -721,7 +719,10 @@ where
             ..fake::Faker.fake_with_rng(&mut rng)
         };
 
-        let withdrawal_fee = sweep_tx_info.assess_output_fee(2).unwrap().to_sat();
+        let withdrawal_fee = sweep_tx_info
+            .assess_output_fee(output_index as usize)
+            .unwrap()
+            .to_sat();
 
         // Add estimate_fee_rate
         self.context
@@ -761,8 +762,6 @@ where
             .await
             .expect("Failed to construct withdrawal accept stacks sign request");
 
-        // We are not storing the decisions in the db, so we will get all zeros
-        let signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
         let outpoint = withdrawal_req.withdrawal_outpoint();
         assert_eq!(sign_request.tx_fee, 123000);
         assert_eq!(sign_request.aggregate_key, bitcoin_aggregate_key);
@@ -774,7 +773,7 @@ where
             assert_eq!(call.tx_fee, withdrawal_fee);
             assert_eq!(call.id.request_id, withdrawal_req.request_id);
             assert_eq!(call.outpoint, outpoint);
-            assert_eq!(call.signer_bitmap, signer_bitmap);
+            assert_eq!(call.signer_bitmap, 0);
             assert_eq!(call.sweep_block_hash, withdrawal_req.sweep_block_hash);
             assert_eq!(call.sweep_block_height, withdrawal_req.sweep_block_height);
         } else {
@@ -798,7 +797,7 @@ where
                     Value::Sequence(SequenceData::Buffer(BuffData {
                         data: outpoint.txid.to_le_bytes().to_vec()
                     })),
-                    Value::UInt(signer_bitmap.load_le()),
+                    Value::UInt(0),
                     Value::UInt(outpoint.vout as u128),
                     Value::UInt(withdrawal_fee as u128),
                     Value::Sequence(SequenceData::Buffer(BuffData {
@@ -867,8 +866,6 @@ where
             .await
             .expect("Failed to construct withdrawal reject stacks sign request");
 
-        // We are not storing the decisions in the db, so we will get all zeros
-        let signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
         assert_eq!(sign_request.tx_fee, 123000);
         assert_eq!(sign_request.aggregate_key, bitcoin_aggregate_key);
         assert_eq!(sign_request.txid, multi_tx.tx().txid());
@@ -881,7 +878,7 @@ where
         };
 
         assert_eq!(call.id, withdrawal_req.qualified_id());
-        assert_eq!(call.signer_bitmap, signer_bitmap);
+        assert_eq!(call.signer_bitmap, 0);
 
         let TransactionPayload::ContractCall(TransactionContractCall {
             address,
@@ -900,7 +897,7 @@ where
             *function_args,
             vec![
                 Value::UInt(withdrawal_req.request_id as u128),
-                Value::UInt(signer_bitmap.load_le()),
+                Value::UInt(0),
             ]
         );
     }
@@ -1079,11 +1076,13 @@ where
         }
 
         // Check context window
-        assert!(storage
-            .get_signer_utxo(&block_c2.block_hash)
-            .await
-            .unwrap()
-            .is_some());
+        assert!(
+            storage
+                .get_signer_utxo(&block_c2.block_hash)
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     /// Assert we get the correct UTXO with a spending chain in a block

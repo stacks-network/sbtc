@@ -7,12 +7,12 @@ use crate::{
     context::EmilyContext,
     database::{
         accessors,
-        entries::limits::{LimitEntry, GLOBAL_CAP_ACCOUNT},
+        entries::limits::{GLOBAL_CAP_ACCOUNT, LimitEntry},
     },
 };
 use tracing::instrument;
 use warp::http::StatusCode;
-use warp::reply::{json, with_status, Reply};
+use warp::reply::{Reply, json, with_status};
 
 /// Get the global limits.
 #[utoipa::path(
@@ -39,7 +39,9 @@ pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
         .map_or_else(Reply::into_response, Reply::into_response)
 }
 
-/// Get limits handler.
+/// Set limits handler.
+/// Note, that `available_to_withdraw` is not settable, but is calculated based on the other fields.
+/// Value of `available_to_withdraw` passed to this endpoint will be ignored.
 #[utoipa::path(
     post,
     operation_id = "setLimits",
@@ -62,6 +64,8 @@ pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::rep
         context: EmilyContext,
         limits: Limits,
     ) -> Result<impl warp::reply::Reply, Error> {
+        // Validate the withdrawal limit configuration.
+        limits.validate()?;
         // Set the global limits.
         accessors::set_limit_for_account(
             &context,
@@ -73,6 +77,8 @@ pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::rep
                     per_deposit_minimum: limits.per_deposit_minimum,
                     per_deposit_cap: limits.per_deposit_cap,
                     per_withdrawal_cap: limits.per_withdrawal_cap,
+                    rolling_withdrawal_blocks: limits.rolling_withdrawal_blocks,
+                    rolling_withdrawal_cap: limits.rolling_withdrawal_cap,
                 },
             ),
         )

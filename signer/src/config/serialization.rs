@@ -99,12 +99,12 @@ where
 
 pub fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> {
     // Keeping these local here as this is the only place these should need to be used.
-    use libp2p::multiaddr::Protocol;
     use SignerConfigError::{
         InvalidP2PScheme, InvalidP2PUri, P2PHostRequired, P2PPasswordNotSupported,
         P2PPathsNotSupported, P2PPortRequired, P2PQueryStringsNotSupported,
         P2PUsernameNotSupported,
     };
+    use libp2p::multiaddr::Protocol;
 
     // We parse to a Url first to take advantage of its initial validation
     // and so that we can more easily work with the URI components below.

@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use bitcoin::hashes::Hash;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
+use bitcoin::hashes::Hash;
 use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
@@ -23,19 +23,17 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 use clarity::types::chainstate::BurnchainHeaderHash;
 use clarity::types::chainstate::SortitionId;
 use clarity::vm::costs::ExecutionCost;
-use emily_client::models::Chainstate;
-use emily_client::models::CreateWithdrawalRequestBody;
-use emily_client::models::Withdrawal;
+use emily_client::models::Status;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
 
+use crate::bitcoin::BitcoinInteract;
+use crate::bitcoin::GetTransactionFeeResult;
+use crate::bitcoin::TransactionLookupHint;
 use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
-use crate::bitcoin::BitcoinInteract;
-use crate::bitcoin::GetTransactionFeeResult;
-use crate::bitcoin::TransactionLookupHint;
 use crate::context::SbtcLimits;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
@@ -500,6 +498,16 @@ impl EmilyInteract for TestHarness {
         Ok(self.pending_deposits.clone())
     }
 
+    async fn get_deposits_with_status(
+        &self,
+        status: Status,
+    ) -> Result<Vec<CreateDepositRequest>, Error> {
+        match status {
+            Status::Pending => Ok(self.pending_deposits.clone()),
+            _ => Ok(Vec::new()),
+        }
+    }
+
     async fn update_deposits(
         &self,
         _update_deposits: Vec<emily_client::models::DepositUpdate>,
@@ -510,15 +518,14 @@ impl EmilyInteract for TestHarness {
     async fn accept_deposits<'a>(
         &'a self,
         _transaction: &'a utxo::UnsignedTransaction<'a>,
-        _stacks_chain_tip: &'a model::StacksBlock,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
         unimplemented!()
     }
 
-    async fn create_withdrawals(
-        &self,
-        _create_withdrawals: Vec<CreateWithdrawalRequestBody>,
-    ) -> Vec<Result<Withdrawal, Error>> {
+    async fn accept_withdrawals<'a>(
+        &'a self,
+        _transaction: &'a utxo::UnsignedTransaction<'a>,
+    ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
         unimplemented!()
     }
 
@@ -527,10 +534,6 @@ impl EmilyInteract for TestHarness {
         _update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,
     ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
         unimplemented!()
-    }
-
-    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
-        Ok(chainstate)
     }
 
     async fn get_limits(&self) -> Result<SbtcLimits, Error> {

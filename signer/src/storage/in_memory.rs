@@ -1,7 +1,7 @@
 //! In-memory store implementation - useful for tests
 
-use bitcoin::consensus::Decodable as _;
 use bitcoin::OutPoint;
+use bitcoin::consensus::Decodable as _;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -11,6 +11,7 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
+use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::WithdrawalRequestReport;
@@ -22,7 +23,6 @@ use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
-use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 use super::model::DkgSharesStatus;
 use super::util::get_utxo;
@@ -832,6 +832,47 @@ impl super::DbRead for SharedStore {
         unimplemented!()
     }
 
+    async fn compute_withdrawn_total(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+    ) -> Result<u64, Error> {
+        let db = self.lock().await;
+        // Get the blockchain
+        let bitcoin_blocks = std::iter::successors(Some(chain_tip), |block_hash| {
+            db.bitcoin_blocks
+                .get(block_hash)
+                .map(|block| &block.parent_hash)
+        })
+        .take(context_window.max(1) as usize)
+        .collect::<HashSet<_>>();
+
+        // Get all transactions in the blockchain
+        let txs = bitcoin_blocks
+            .iter()
+            .flat_map(|block_hash| db.bitcoin_block_to_transactions.get(block_hash))
+            .flatten()
+            .collect::<HashSet<_>>();
+
+        // Get withdrawal IDs related to the above transactions.
+        let swept_withdrawals = db
+            .bitcoin_withdrawal_outputs
+            .values()
+            .filter(|x| txs.contains(&x.bitcoin_txid))
+            .map(|x| (x.request_id, x.stacks_block_hash))
+            .collect::<HashSet<_>>();
+
+        // Compute the total amount from all of these swept withdrawal
+        // requests.
+        let total_withdrawn = swept_withdrawals
+            .iter()
+            .filter_map(|id| db.withdrawal_requests.get(id))
+            .map(|req| req.amount)
+            .sum();
+
+        Ok(total_withdrawn)
+    }
+
     async fn get_bitcoin_tx(
         &self,
         txid: &model::BitcoinTxId,
@@ -860,46 +901,6 @@ impl super::DbRead for SharedStore {
         _context_window: u16,
     ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
         unimplemented!("can only be tested using integration tests for now.");
-
-        // NOTE: The below is a starting point for how to write this, but it
-        // lacks some of the additional validations that are expected of this
-        // function. For example, we need to ensure that the
-        // 'withdrawal-accept-event' is in a Stacks block which is part of the
-        // canonical Bitcoin chain, which we cannot do yet (#559: link stacks
-        // blocks with bitcoin blocks).
-
-        // let store = self.lock().await;
-        // let bitcoin_blocks = &store.bitcoin_blocks;
-        // let first = bitcoin_blocks.get(chain_tip);
-
-        // std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
-        //     .take(context_window as usize)
-        //     .filter_map(|block| {
-        //         store
-        //             .bitcoin_block_to_transactions
-        //             .get(&block.block_hash)
-        //             .and_then(|txs| {
-        //                 store.transaction_packages.iter().find(|package| {
-        //                     package
-        //                         .transactions
-        //                         .iter()
-        //                         .any(|packaged_tx| txs.iter().any(|tx| *tx == packaged_tx.txid))
-        //                 })
-        //             })
-        //     })
-        //     .flat_map(|package| {
-        //         package.transactions.iter().flat_map(|tx| {
-        //             tx.swept_withdrawals.iter().map(|withdrawal| {
-        //                 Ok(model::SweptWithdrawalRequest {
-        //                     request_id: withdrawal.withdrawal_request_id,
-        //                     block_hash: withdrawal.withdrawal_request_block_hash,
-        //                     sweep_block_hash: package.created_at_block_hash,
-        //                     sweep_txid: tx.txid,
-        //                 })
-        //             })
-        //         })
-        //     })
-        //     .collect::<Result<Vec<_>, Error>>()
     }
 
     async fn get_deposit_request(
@@ -925,6 +926,70 @@ impl super::DbRead for SharedStore {
             .bitcoin_sighashes
             .get(sighash)
             .map(|s| (s.will_sign, s.aggregate_key)))
+    }
+
+    // The postgres implementation uses a timestamp to figure out when a
+    // decision was inserted into the database. The in memory database
+    // does not have such a timestamp, so we use the Stacks block's
+    // bitcoin anchor block as a proxy for when the decision was made.
+    // Discussion about this can be found here:
+    // https://github.com/stacks-network/sbtc/pull/1243#discussion_r1922483913
+    async fn get_withdrawal_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::WithdrawalSigner>, Error> {
+        let store = self.lock().await;
+
+        let first_block = store.bitcoin_blocks.get(chain_tip);
+
+        let context_window_end_block = std::iter::successors(first_block, |block| {
+            Some(
+                store
+                    .bitcoin_blocks
+                    .get(&block.parent_hash)
+                    .unwrap_or(block),
+            )
+        })
+        .nth(context_window as usize);
+
+        let Some(context_window_end_block) = context_window_end_block else {
+            return Ok(Vec::new());
+        };
+
+        let Some(stacks_chain_tip) = store.get_stacks_chain_tip(chain_tip) else {
+            return Ok(Vec::new());
+        };
+
+        let stacks_blocks_in_context: HashSet<_> =
+            std::iter::successors(Some(&stacks_chain_tip), |stacks_block| {
+                store.stacks_blocks.get(&stacks_block.parent_hash)
+            })
+            .take_while(|stacks_block| {
+                store
+                    .bitcoin_blocks
+                    .get(&stacks_block.bitcoin_anchor)
+                    .is_some_and(|anchor| {
+                        anchor.block_height >= context_window_end_block.block_height
+                    })
+            })
+            .map(|stacks_block| stacks_block.block_hash)
+            .collect();
+
+        let withdrawal_signers: Vec<_> = store
+            .withdrawal_request_to_signers
+            .iter()
+            .map(|(_, signers)| signers)
+            .flatten()
+            .filter(|signer| {
+                stacks_blocks_in_context.contains(&signer.block_hash)
+                    && signer.signer_pub_key == *signer_public_key
+            })
+            .cloned()
+            .collect();
+
+        Ok(withdrawal_signers)
     }
 
     async fn get_deposit_signer_decisions(
@@ -1233,6 +1298,13 @@ impl super::DbWrite for SharedStore {
             .insert(output.txid, output.clone());
 
         Ok(())
+    }
+
+    async fn write_withdrawal_tx_output(
+        &self,
+        _output: &model::WithdrawalTxOutput,
+    ) -> Result<(), Error> {
+        unimplemented!()
     }
 
     async fn write_tx_prevout(&self, prevout: &model::TxPrevout) -> Result<(), Error> {

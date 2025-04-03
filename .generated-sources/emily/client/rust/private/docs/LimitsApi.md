@@ -6,7 +6,7 @@ Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**get_limits**](LimitsApi.md#get_limits) | **GET** /limits | Get the global limits.
 [**get_limits_for_account**](LimitsApi.md#get_limits_for_account) | **GET** /limits/{account} | Get limits for account handler.
-[**set_limits**](LimitsApi.md#set_limits) | **POST** /limits | Get limits handler.
+[**set_limits**](LimitsApi.md#set_limits) | **POST** /limits | Set limits handler.
 [**set_limits_for_account**](LimitsApi.md#set_limits_for_account) | **POST** /limits/{account} | Set limits for account handler.
 
 
@@ -67,7 +67,9 @@ No authorization required
 ## set_limits
 
 > models::Limits set_limits(limits)
-Get limits handler.
+Set limits handler.
+
+Note, that `available_to_withdraw` is not settable, but is calculated based on the other fields. Value of `available_to_withdraw` passed to this endpoint will be ignored.
 
 ### Parameters
 

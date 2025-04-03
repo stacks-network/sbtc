@@ -15,6 +15,7 @@ use crate::context::Context;
 use crate::error::Error;
 use crate::metrics::Metrics;
 use crate::metrics::STACKS_BLOCKCHAIN;
+use crate::storage::DbWrite;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::KeyRotationEvent;
 use crate::storage::model::RotateKeysTransaction;
@@ -23,7 +24,6 @@ use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::storage::model::WithdrawalRequest;
-use crate::storage::DbWrite;
 use sbtc::webhooks::NewBlockEvent;
 
 use super::ApiState;
@@ -167,14 +167,14 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         // So we return a non success status code so that the node retries
         // in a second.
         if let Err(Error::SqlxQuery(error)) = res {
-            tracing::error!(%error, "got an error when writing event to database");
+            tracing::error!(%error, "could not write an event to the database");
             return StatusCode::INTERNAL_SERVER_ERROR;
         // If we got an error processing the event, we log the error and
         // return a success status code so that the node does not retry the
         // webhook. We rely on the redundancy of the other sBTC signers to
         // ensure that the update is sent to Emily.
         } else if let Err(error) = res {
-            tracing::error!(%error, "got an error when processing event");
+            tracing::error!(%error, "could not process an event");
         }
     }
 
@@ -294,7 +294,7 @@ async fn handle_key_rotation(
         txid: stacks_txid,
         address: event.new_address,
         aggregate_key: event.new_aggregate_pubkey,
-        signer_set: event.new_keys.into_iter().map(Into::into).collect(),
+        signer_set: event.new_keys,
         signatures_required: event.new_signature_threshold,
     };
 
@@ -317,11 +317,9 @@ mod tests {
     use bitcoin::OutPoint;
     use bitvec::array::BitArray;
     use clarity::vm::types::PrincipalData;
-    use emily_client::models::UpdateDepositsResponse;
-    use emily_client::models::UpdateWithdrawalsResponse;
     use fake::Fake;
-    use rand::rngs::OsRng;
     use rand::SeedableRng as _;
+    use rand::rngs::OsRng;
     use secp256k1::SECP256K1;
     use stacks_common::types::chainstate::StacksBlockId;
     use test_case::test_case;
@@ -359,7 +357,7 @@ mod tests {
     #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
     #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_requests.get(&(1, StacksBlockId::from_hex("75b02b9884ec41c05f2cfa6e20823328321518dd0b027e7b609b63d4d1ea7c78").unwrap().into())).is_none(); "withdrawal-create")]
     #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
-    #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
+    #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&1).is_none(); "withdrawal-reject")]
     #[test_case(ROTATE_KEYS_WEBHOOK, |db| db.rotate_keys_transactions.is_empty(); "rotate-keys")]
     #[tokio::test]
     async fn test_events<F>(body_str: &str, table_is_empty: F)
@@ -397,7 +395,7 @@ mod tests {
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
-        let mut ctx = TestContext::builder()
+        let ctx = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .build();
@@ -440,29 +438,12 @@ mod tests {
 
         // An extra check that we have events with our fishy identifier.
         assert!(!events.is_empty());
-        assert!(events
-            .iter()
-            .all(|x| x.contract_identifier == fishy_identifier));
+        assert!(
+            events
+                .iter()
+                .all(|x| x.contract_identifier == fishy_identifier)
+        );
 
-        ctx.with_emily_client(|client| {
-            client
-                .expect_update_deposits()
-                .times(0)
-                .returning(move |_| {
-                    Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
-                });
-            client
-                .expect_update_withdrawals()
-                .times(0)
-                .returning(move |_| {
-                    Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
-                });
-            client
-                .expect_create_withdrawals()
-                .times(0)
-                .returning(move |_| Box::pin(async { vec![] }));
-        })
-        .await;
         // Okay now to do the check.
         let state = State(api.clone());
         let res = new_block_handler(state, body).await;
@@ -523,10 +504,11 @@ mod tests {
         assert!(res.is_ok());
         let db = db.lock().await;
         assert_eq!(db.completed_deposit_events.len(), 1);
-        assert!(db
-            .completed_deposit_events
-            .get(&deposit_request.outpoint())
-            .is_some());
+        assert!(
+            db.completed_deposit_events
+                .get(&deposit_request.outpoint())
+                .is_some()
+        );
     }
 
     /// Tests handling a withdrawal acceptance event.
@@ -623,10 +605,11 @@ mod tests {
         assert!(res.is_ok());
         let db = db.lock().await;
         assert_eq!(db.withdrawal_requests.len(), 1);
-        assert!(db
-            .withdrawal_requests
-            .get(&(request_id, stacks_first_block.block_hash))
-            .is_some());
+        assert!(
+            db.withdrawal_requests
+                .get(&(request_id, stacks_first_block.block_hash))
+                .is_some()
+        );
     }
 
     /// Tests handling a withdrawal rejection event.
@@ -709,23 +692,10 @@ mod tests {
     #[test_case(EVENT_OBSERVER_BODY_LIMIT + 1, false; "event over limit")]
     #[tokio::test]
     async fn test_big_event(event_size: usize, success: bool) {
-        let mut ctx = TestContext::builder()
+        let ctx = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .build();
-
-        ctx.with_emily_client(|client| {
-            client.expect_update_deposits().returning(move |_| {
-                Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
-            });
-            client.expect_update_withdrawals().returning(move |_| {
-                Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
-            });
-            client
-                .expect_create_withdrawals()
-                .returning(move |_| Box::pin(async { vec![] }));
-        })
-        .await;
 
         let state = ApiState { ctx: ctx.clone() };
         let app = get_router().with_state(state);
@@ -756,23 +726,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_event() {
-        let mut ctx = TestContext::builder()
+        let ctx = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .build();
-
-        ctx.with_emily_client(|client| {
-            client.expect_update_deposits().returning(move |_| {
-                Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
-            });
-            client.expect_update_withdrawals().returning(move |_| {
-                Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
-            });
-            client
-                .expect_create_withdrawals()
-                .returning(move |_| Box::pin(async { vec![] }));
-        })
-        .await;
 
         let state = State(ApiState { ctx: ctx.clone() });
         let body = ROTATE_KEYS_AND_INVALID_EVENT_WEBHOOK.to_string();
@@ -790,11 +747,13 @@ mod tests {
             txid: sbtc::events::StacksTxid([0; 32]),
             block_id: StacksBlockId([0; 32]),
         };
-        assert!(RegistryEvent::try_new(
-            failing_event.contract_event.as_ref().unwrap().value.clone(),
-            tx_info
-        )
-        .is_err());
+        assert!(
+            RegistryEvent::try_new(
+                failing_event.contract_event.as_ref().unwrap().value.clone(),
+                tx_info
+            )
+            .is_err()
+        );
 
         let res = new_block_handler(state, body).await;
 

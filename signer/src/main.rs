@@ -1,7 +1,7 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::Request;
@@ -20,8 +20,8 @@ use signer::context::Context;
 use signer::context::SignerContext;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
-use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::P2PNetwork;
+use signer::network::libp2p::SignerSwarmBuilder;
 use signer::request_decider::RequestDeciderEventLoop;
 use signer::stacks::api::StacksClient;
 use signer::storage::postgres::PgStore;
@@ -239,6 +239,7 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
         .add_external_addresses(&ctx.config().signer.p2p.public_endpoints)
         .enable_mdns(config.signer.p2p.enable_mdns)
         .enable_quic_transport(enable_quic)
+        .with_initial_bootstrap_delay(Duration::from_secs(3))
         .build()?;
 
     // Start the libp2p swarm. This will run until either the shutdown signal is
@@ -366,6 +367,7 @@ async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
         context: ctx.clone(),
         context_window: config.signer.context_window,
         deposit_decisions_retry_window: config.signer.deposit_decisions_retry_window,
+        withdrawal_decisions_retry_window: config.signer.withdrawal_decisions_retry_window,
         blocklist_checker: config.blocklist_client.as_ref().map(BlocklistClient::new),
         signer_private_key: config.signer.private_key,
     };

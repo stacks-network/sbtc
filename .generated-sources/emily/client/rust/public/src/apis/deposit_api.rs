@@ -84,6 +84,7 @@ pub enum GetDepositsForTransactionError {
 #[serde(untagged)]
 pub enum UpdateDepositsError {
     Status400(models::ErrorResponse),
+    Status403(models::ErrorResponse),
     Status404(models::ErrorResponse),
     Status405(models::ErrorResponse),
     Status500(models::ErrorResponse),

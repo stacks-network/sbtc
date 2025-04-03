@@ -4,8 +4,6 @@ pub mod chainstate;
 pub use self::chainstate::Chainstate;
 pub mod create_deposit_request_body;
 pub use self::create_deposit_request_body::CreateDepositRequestBody;
-pub mod create_withdrawal_request_body;
-pub use self::create_withdrawal_request_body::CreateWithdrawalRequestBody;
 pub mod deposit;
 pub use self::deposit::Deposit;
 pub mod deposit_info;

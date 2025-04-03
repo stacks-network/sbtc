@@ -28,10 +28,11 @@ stackslib = { git = "https://github.com/stacks-network/stacks-core", rev = "4977
 stacks-common = { git = "https://github.com/stacks-network/stacks-core", rev = "49777d3fd73a6dbb610be80c376b7d9389c9871a", default-features = false, features = ["canonical"] }
 
 # Trust Machines Dependencies
-wsts = { version = "13.0.1" }
+wsts = { git = "https://github.com/Trust-Machines/wsts", rev = "11e2316aa0edf996f8e8f9ccbbbfd4bd2975ed1d" }
 
 # Crates.io
 aquamarine = { version = "0.6.0", default-features = false }
+assert_matches = { version = "1.5.0", default-features = false }
 aws-config = { version = "1.5.15", default-features = false, features = ["rustls", "rt-tokio"] }
 aws_lambda_events = { version = "0.16.0", default-features = false }
 aws-sdk-dynamodb = { version = "1.62.0", default-features = false }
@@ -44,7 +45,7 @@ bitcoincore-rpc = { version = "0.19.0", default-features = false }
 bitcoincore-rpc-json = { version = "0.19.0", default-features = false }
 bitcoincore-zmq = { version = "1.5.2", default-features = false, features = ["async"] }
 bitvec = { version = "1.0.1", default-features = false, features = ["serde"] }
-clap = { version = "4.5.27", default-features = false, features = ["derive", "env", "std"] }
+clap = { version = "4.5.27", default-features = false, features = ["derive", "env", "std", "help"] }
 config = { version = "0.14.1", default-features = false, features = ["toml"] }
 futures = { version = "0.3.31", default-features = false }
 hashbrown = { version = "0.14.5", default-features = false }
@@ -54,6 +55,7 @@ metrics = { version = "0.24.1", default-features = false }
 metrics-exporter-prometheus = { version = "0.16.1", default-features = false, features = ["http-listener"] }
 openssl = { version = "0.10.68", default-features = false, features = ["vendored"] }
 p256k1 = { version = "7.2.2", default-features = false }
+proptest = { version = "1.6.0", default-features = false, features = ["std"] }
 prost = { version = "0.13.4", default-features = false, features = ["derive"] }
 rand = { version = "0.8.5", default-features = false }
 reqwest = { version = "0.11.27", default-features = false, features = ["json", "rustls-tls"] }

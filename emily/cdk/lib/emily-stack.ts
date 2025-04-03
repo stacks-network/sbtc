@@ -255,8 +255,10 @@ export class EmilyStack extends cdk.Stack {
                 "StacksBlockHash",
                 "StacksBlockHeight",
                 "Recipient",
+                "Sender",
                 "Amount",
                 "LastUpdateBlockHash",
+                "Txid",
             ]
         });
 
@@ -277,12 +279,36 @@ export class EmilyStack extends cdk.Stack {
                 "StacksBlockHash",
                 "StacksBlockHeight",
                 "OpStatus",
+                "Sender",
                 "Amount",
                 "LastUpdateBlockHash",
+                "Txid",
             ]
         });
 
-        // TODO(388): Add an additional GSI for querying by user; not required for MVP.
+        const bySenderIndexName: string = "WithdrawalSender";
+        table.addGlobalSecondaryIndex({
+            indexName: bySenderIndexName,
+            partitionKey: {
+                name: 'Sender',
+                type: dynamodb.AttributeType.STRING
+            },
+            sortKey: {
+                name: 'LastUpdateHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "RequestId",
+                "StacksBlockHash",
+                "StacksBlockHeight",
+                "OpStatus",
+                "Recipient",
+                "Amount",
+                "LastUpdateBlockHash",
+                "Txid",
+            ]
+        });
         return table;
     }
 
@@ -300,7 +326,7 @@ export class EmilyStack extends cdk.Stack {
         pointInTimeRecovery: undefined | boolean,
     ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
-        return new dynamodb.Table(this, tableId, {
+        const table =  new dynamodb.Table(this, tableId, {
             tableName: tableName,
             partitionKey: {
                 name: 'Height',
@@ -314,6 +340,23 @@ export class EmilyStack extends cdk.Stack {
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
             pointInTimeRecovery: pointInTimeRecovery,
         });
+        const byBitcoinHeight: string = "BitcoinBlockHeightIndex";
+        table.addGlobalSecondaryIndex({
+            indexName: byBitcoinHeight,
+            partitionKey: {
+                name: 'BitcoinHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            sortKey: {
+                name: 'Height',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "Hash",
+            ]
+        });
+        return table;
     }
 
     /**
@@ -390,6 +433,7 @@ export class EmilyStack extends cdk.Stack {
                 TRUSTED_REORG_API_KEY: props.trustedReorgApiKey,
                 IS_MAINNET: props.stageName == Constants.PROD_STAGE_NAME || props.stageName == Constants.PRIVATE_MAINNET_STAGE_NAME ? "true" : "false",
                 VERSION: EmilyStackUtils.getLambdaGitIdentifier(),
+                DEPLOYER_ADDRESS: props.deployerAddress,
             },
             description: `Emily Api Handler. ${EmilyStackUtils.getLambdaGitIdentifier()}`,
             currentVersionOptions: {

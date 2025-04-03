@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use bitcoin::OutPoint;
-use bitvec::array::BitArray;
 use clarity::codec::StacksMessageCodec as _;
 use clarity::vm::types::PrincipalData;
 use p256k1::point::Point;
@@ -361,7 +360,7 @@ impl From<SignerWithdrawalDecision> for proto::SignerWithdrawalDecision {
     fn from(value: SignerWithdrawalDecision) -> Self {
         proto::SignerWithdrawalDecision {
             request_id: value.request_id,
-            block_id: Some(StacksBlockHash::from(value.block_hash).into()),
+            block_id: Some(value.block_hash.into()),
             accepted: value.accepted,
             txid: Some(value.txid.into()),
         }
@@ -373,7 +372,7 @@ impl TryFrom<proto::SignerWithdrawalDecision> for SignerWithdrawalDecision {
     fn try_from(value: proto::SignerWithdrawalDecision) -> Result<Self, Self::Error> {
         Ok(SignerWithdrawalDecision {
             request_id: value.request_id,
-            block_hash: StacksBlockHash::try_from(value.block_id.required()?)?.into_bytes(),
+            block_hash: StacksBlockHash::try_from(value.block_id.required()?)?,
             accepted: value.accepted,
             txid: value.txid.required()?.try_into()?,
         })
@@ -415,7 +414,7 @@ impl From<AcceptWithdrawalV1> for proto::AcceptWithdrawal {
             id: Some(value.id.into()),
             outpoint: Some(value.outpoint.into()),
             tx_fee: value.tx_fee,
-            signer_bitmap: value.signer_bitmap.iter().map(|e| *e).collect(),
+            signer_bitmap: Vec::new(),
             deployer: Some(value.deployer.into()),
             sweep_block_hash: Some(value.sweep_block_hash.into()),
             sweep_block_height: value.sweep_block_height,
@@ -426,24 +425,11 @@ impl From<AcceptWithdrawalV1> for proto::AcceptWithdrawal {
 impl TryFrom<proto::AcceptWithdrawal> for AcceptWithdrawalV1 {
     type Error = Error;
     fn try_from(value: proto::AcceptWithdrawal) -> Result<Self, Self::Error> {
-        let mut signer_bitmap = BitArray::ZERO;
-        value
-            .signer_bitmap
-            .iter()
-            .enumerate()
-            .take(signer_bitmap.len().min(crate::MAX_KEYS as usize))
-            .for_each(|(index, vote)| {
-                // The BitArray::<[u8; 16]>::set function panics if the
-                // index is out of bounds but that cannot be the case here
-                // because we only take 128 values.
-                signer_bitmap.set(index, *vote);
-            });
-
         Ok(AcceptWithdrawalV1 {
             id: value.id.required()?.try_into()?,
             outpoint: value.outpoint.required()?.try_into()?,
             tx_fee: value.tx_fee,
-            signer_bitmap,
+            signer_bitmap: 0,
             deployer: value.deployer.required()?.try_into()?,
             sweep_block_hash: value.sweep_block_hash.required()?.try_into()?,
             sweep_block_height: value.sweep_block_height,
@@ -455,7 +441,7 @@ impl From<RejectWithdrawalV1> for proto::RejectWithdrawal {
     fn from(value: RejectWithdrawalV1) -> Self {
         proto::RejectWithdrawal {
             id: Some(value.id.into()),
-            signer_bitmap: value.signer_bitmap.iter().map(|e| *e).collect(),
+            signer_bitmap: Vec::new(),
             deployer: Some(value.deployer.into()),
         }
     }
@@ -464,22 +450,9 @@ impl From<RejectWithdrawalV1> for proto::RejectWithdrawal {
 impl TryFrom<proto::RejectWithdrawal> for RejectWithdrawalV1 {
     type Error = Error;
     fn try_from(value: proto::RejectWithdrawal) -> Result<Self, Self::Error> {
-        let mut signer_bitmap = BitArray::ZERO;
-        value
-            .signer_bitmap
-            .iter()
-            .enumerate()
-            .take(signer_bitmap.len().min(crate::MAX_KEYS as usize))
-            .for_each(|(index, vote)| {
-                // The BitArray::<[u8; 16]>::set function panics if the
-                // index is out of bounds but that cannot be the case here
-                // because we only take 128 values.
-                signer_bitmap.set(index, *vote);
-            });
-
         Ok(RejectWithdrawalV1 {
             id: value.id.required()?.try_into()?,
-            signer_bitmap,
+            signer_bitmap: 0,
             deployer: value.deployer.required()?.try_into()?,
         })
     }
