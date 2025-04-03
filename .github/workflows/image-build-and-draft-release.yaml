@@ -104,13 +104,13 @@ jobs:
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb #v2.1.0
         with:
-          subject-name: ghcr.io/${{ env.ghcr_org }}/sbtc
+          subject-name: ${{ env.ghcr_org }}/sbtc
           subject-digest: ${{ steps.docker_build.outputs.digest }}
           push-to-registry: true
 
       - name: Download artifact attestation 
         run: |
-          gh attestation download oci://ghcr.io/${{ env.ghcr-org }}/sbtc:${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }} -R stacks-sbtc/sbtc
+          gh attestation download oci://${{ env.ghcr_org }}/sbtc:${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }} -R stacks-sbtc/sbtc
           
           # Rename the attestation bundle (replace ":" with "_")
           ATTESTATION_FILE="$(echo "${{ steps.docker_build.outputs.digest }}.jsonl" | tr ':' '_')"
