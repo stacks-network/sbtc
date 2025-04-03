@@ -245,12 +245,14 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 #v4.2.3
+        id: cargo-vet-cache
         with:
           path: ${{ runner.tool_cache }}/cargo-vet
           key: cargo-vet-bin-${{ env.CARGO_VET_VERSION }}
       - name: Add the tool cache directory to the search path
         run: echo "${{ runner.tool_cache }}/cargo-vet/bin" >> $GITHUB_PATH
       - name: Ensure that the tool cache is populated with the cargo-vet binary
+        if: steps.cargo-vet-cache.outputs.cache-hit != 'true'
         run: cargo install --root ${{ runner.tool_cache }}/cargo-vet --version ${{ env.CARGO_VET_VERSION }} --locked cargo-vet
       - name: Run Cargo Vet
         id: cargo-vet
