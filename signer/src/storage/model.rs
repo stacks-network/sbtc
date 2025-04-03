@@ -1441,7 +1441,7 @@ macro_rules! implement_special_methods {
 /// Most of this impls are arithmetics and conversions.
 macro_rules! implement_int {
     ($type:ident, $inner:ty) => {
-        $crate::implement_from!($type, $inner, u8, u16, u32, u64, usize, i32);
+        $crate::implement_from!($type, $inner, u8, u16, u32, u64, u128, usize, i32);
         impl From<$type> for $inner {
             fn from(value: $type) -> Self {
                 value.0

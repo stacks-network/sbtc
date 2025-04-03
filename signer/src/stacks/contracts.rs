@@ -688,7 +688,7 @@ impl AsContractCall for AcceptWithdrawalV1 {
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.tx_fee as u128),
             ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
-            ClarityValue::UInt(u64::from(self.sweep_block_height) as u128),
+            ClarityValue::UInt(self.sweep_block_height.into()),
             ClarityValue::Sequence(SequenceData::Buffer(txid)),
         ]
     }
