@@ -865,7 +865,7 @@ mod tests {
                 assert_eq!(event.request_id, request_id as u64);
                 assert_eq!(event.block_height, block_height as u64);
                 assert_eq!(event.max_fee, max_fee as u64);
-                assert_eq!(event.sender, sender.into());
+                assert_eq!(event.sender, sender);
                 assert_eq!(event.recipient, recipient_address);
             }
             e => panic!("Got the wrong event variant: {e:?}"),

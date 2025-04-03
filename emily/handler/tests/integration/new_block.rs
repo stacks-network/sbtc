@@ -39,7 +39,7 @@ where
     let new_block_event = serde_json::from_str::<NewBlockEvent>(body).unwrap();
     let deposit_event = new_block_event.events.first().unwrap();
     let tx_info = TxInfo {
-        txid: sbtc::events::StacksTxid(deposit_event.txid.0.clone()),
+        txid: sbtc::events::StacksTxid(deposit_event.txid.0),
         block_id: new_block_event.index_block_hash,
     };
     let deposit_event = deposit_event.contract_event.as_ref().unwrap();

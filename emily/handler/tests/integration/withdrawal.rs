@@ -13,11 +13,11 @@ use testing_emily_client::models::{
 
 use crate::common::clean_setup;
 
-const RECIPIENT: &'static str = "TEST_RECIPIENT";
-const SENDER: &'static str = "TEST_SENDER";
-const BLOCK_HASH: &'static str = "TEST_BLOCK_HASH";
+const RECIPIENT: &str = "TEST_RECIPIENT";
+const SENDER: &str = "TEST_SENDER";
+const BLOCK_HASH: &str = "TEST_BLOCK_HASH";
 const BLOCK_HEIGHT: u64 = 0;
-const INITIAL_WITHDRAWAL_STATUS_MESSAGE: &'static str = "Just received withdrawal";
+const INITIAL_WITHDRAWAL_STATUS_MESSAGE: &str = "Just received withdrawal";
 
 /// An arbitrary fully ordered partial cmp comparator for WithdrawalInfos.
 /// This is useful for sorting vectors of withdrawal infos so that vectors with
@@ -49,7 +49,7 @@ async fn batch_create_withdrawals(
     let mut created: Vec<Withdrawal> = Vec::with_capacity(create_requests.len());
     for request in create_requests {
         created.push(
-            apis::withdrawal_api::create_withdrawal(&configuration, request)
+            apis::withdrawal_api::create_withdrawal(configuration, request)
                 .await
                 .expect(
                     "Received an error after making a valid create withdrawal request api call.",
@@ -454,7 +454,7 @@ async fn update_withdrawals() {
         let withdrawal_update = WithdrawalUpdate {
             request_id,
             fulfillment: Some(Some(Box::new(update_fulfillment.clone()))),
-            status: update_status.clone(),
+            status: update_status,
             status_message: update_status_message.into(),
         };
         withdrawal_updates.push(withdrawal_update);
@@ -470,7 +470,7 @@ async fn update_withdrawals() {
             request_id,
             stacks_block_hash: BLOCK_HASH.into(),
             stacks_block_height: BLOCK_HEIGHT,
-            status: update_status.clone(),
+            status: update_status,
             status_message: update_status_message.into(),
             txid: "test_txid".to_string(),
         };

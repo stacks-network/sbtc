@@ -679,7 +679,7 @@ mod tests {
 
     #[test]
     fn deposit_script_128_byte_contract_name() {
-        let contract_name = std::iter::repeat('a').take(128).collect::<String>();
+        let contract_name = "a".repeat(128);
         let principal_str = format!("{}.{contract_name}", StacksAddress::burn_address(false));
         let secret_key = SecretKey::new(&mut OsRng);
 
@@ -793,7 +793,7 @@ mod tests {
         .push_opcode(opcodes::OP_CSV)
         .into_script() ; "start with 0")]
     #[test_case(ScriptBuf::builder()
-        .push_int(1 << 31 + 15)
+        .push_int(1 << (31 + 15))
         .push_opcode(opcodes::OP_CSV)
         .into_script() ; "is a lock-disabling number")]
     #[test_case(ScriptBuf::builder()
