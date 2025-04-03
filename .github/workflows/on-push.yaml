@@ -45,7 +45,7 @@ jobs:
         with:
           components: clippy, rustfmt
           cache-key: "rust-tests"
-      - uses: arduino/setup-protoc@v3
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b
       - name: Install Package Dependencies
         run: make install
       - name: Lint (Rustfmt)
@@ -79,7 +79,7 @@ jobs:
       - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
-      - uses: arduino/setup-protoc@v3
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b
       - name: Build Tests
         run: make test-build
       - name: Create Nextest Archives
@@ -108,7 +108,7 @@ jobs:
       - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
-      - uses: arduino/setup-protoc@v3
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b
       - name: Install Package Dependencies
         run: make install
       - name: Download Nextest Archives
