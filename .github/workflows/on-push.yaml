@@ -13,6 +13,7 @@ env:
   BUF_VERSION: 1.42.0
   PYTHON_VERSION: 3.13
   NEXTEST_VERSION: 0.9.88
+  CARGO_VET_VERSION: 0.10.0
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_DEV_STRIP: "debuginfo"
 
@@ -239,19 +240,25 @@ jobs:
   # Dependencies failing verification will cause the workflow to fail with explicit
   # error annotations, and an audit report is uploaded as an artifact.
   cargo-vet:
-    name: Run Cargo Vet
+    name: Vet Dependencies
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
-      - name: Install Cargo Vet
-        run: cargo install --locked cargo-vet
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 #v4.2.3
+        with:
+          path: ${{ runner.tool_cache }}/cargo-vet
+          key: cargo-vet-bin-${{ env.CARGO_VET_VERSION }}
+      - name: Add the tool cache directory to the search path
+        run: echo "${{ runner.tool_cache }}/cargo-vet/bin" >> $GITHUB_PATH
+      - name: Ensure that the tool cache is populated with the cargo-vet binary
+        run: cargo install --root ${{ runner.tool_cache }}/cargo-vet --version ${{ env.CARGO_VET_VERSION }} --locked cargo-vet
       - name: Run Cargo Vet
         id: cargo-vet
         run: |
           echo "=============================="
           echo "Running Dependency Vetting"
           echo "=============================="
-          cargo vet || {
+          cargo vet --locked || {
             echo "=============================="
             echo "Unvetted dependencies detected!"
             echo "Generating suggestions and detailed report..."
