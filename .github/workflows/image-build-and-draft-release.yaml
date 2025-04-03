@@ -1,6 +1,6 @@
 ## Github workflow to build a multiarch docker image from pre-built binaries
 
-name: Docker Hub Release Image (Binary)
+name: GHCR Release Image (Binary)
 
 on:
   push:
