@@ -1470,9 +1470,6 @@ macro_rules! implement_int {
         impl TryFrom<$type> for i64 {
             type Error = TryFromIntError;
             fn try_from(value: $type) -> Result<Self, Self::Error> {
-                eprintln!("Trying to convert {} to i64", stringify!($type));
-                eprintln!("Value: {}", value.0);
-                eprintln!("res: {:#?}", i64::try_from(value.0));
                 i64::try_from(value.0)
             }
         }
@@ -1480,9 +1477,6 @@ macro_rules! implement_int {
         impl TryFrom<i64> for $type {
             type Error = TryFromIntError;
             fn try_from(value: i64) -> Result<Self, Self::Error> {
-                eprintln!("Trying to convert i64 to {}", stringify!($type));
-                eprintln!("Value: {}", value);
-                eprintln!("res: {:#?}", <$inner>::try_from(value));
                 Ok(Self(<$inner>::try_from(value)?))
             }
         }
