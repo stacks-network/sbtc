@@ -94,6 +94,7 @@ jobs:
           tags: ${{ steps.docker_metadata.outputs.tags }}
           labels: ${{ steps.docker_metadata.outputs.labels }}
           target: ${{ matrix.docker_target }}
+          no-cache: true
           push: true
           build-args: |
             GIT_COMMIT=${{ github.ref_name }}
@@ -146,27 +147,37 @@ jobs:
         id: generate-release-notes
         run: |
           cat <<EOF > release_notes.md
-          <A manual one-liner with changes>Fill the section.
+          __✏️ Provide a brief summary of the release here, ideally just one or two sentences.__
   
-          [Highlights](#highlights) • [Images](#images) • [Upgrade Instructions](#upgrade-instructions)
+          [Highlights](#highlights) • [Images](#images) • [Upgrade Instructions](#upgrade-instructions) • [What's Changed](#whats-changed)
   
           ## ✨ Highlights <a id="highlights">
   
-          <A manual one-liner with changes>Fill the section.
+          __✏️ Complete the highlights section with a brief list of notable changes__
+          - Highlight 1
+          - Highlight 2
+          - etc...
   
-          ## 🔗 Links
+          ## 🐳 Images: <a id="images">
+          ⚠️ Always use [immutable image tags](https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier) - the image digests are provided below. Verify the attestation of these images using this [guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).
   
-          ### 🐳 Images <a id="images">
+          We publish our images on [Dockerhub](https://hub.docker.com/r/blockstack/sbtc/tags?name=${{ env.TAG_NAME }}).
+
+          ### sBTC Signer
+          [\`blockstack/sbtc:signer-${{ env.TAG_NAME }}@${{ needs.image.outputs.signer }}\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ env.TAG_NAME }}/images/${{ needs.image.outputs.signer }})
+          - 🏷️ \`blockstack/sbtc:signer-${{ env.TAG_NAME }}\`
+          - 🔒 \`${{ needs.image.outputs.signer }}\`
+
+          ### Blocklist Client
+          [\`blockstack/sbtc:blocklist-client-${{ env.TAG_NAME }}@${{ needs.image.outputs.blocklist-client }}\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ env.TAG_NAME }}/images/${{ needs.image.outputs.blocklist-client }})
+          - 🏷️ \`blockstack/sbtc:blocklist-client-${{ env.TAG_NAME }}\`
+          - 🔒 \`${{ needs.image.outputs.blocklist-client }}\`
+
+          ## 📙 Database migrations
   
-          - [\`blockstack/sbtc:signer-${{ env.TAG_NAME }}@${{ needs.image.outputs.signer }}\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ env.TAG_NAME }}/images/${{ needs.image.outputs.signer }})
-          - [\`blockstack/sbtc:blocklist-client-${{ env.TAG_NAME }}@${{ needs.image.outputs.blocklist-client }}\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ env.TAG_NAME }}/images/${{ needs.image.outputs.blocklist-client }})
-          ⚠️ Always use [immutable image tags](https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier).
-  
-          🔎 Verify the attestation of these images using [this guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).
-  
-          ### 📙 Database migrations
-  
-          Here: [\`signer/migrations\`](https://github.com/stacks-network/sbtc/tree/${{ env.TAG_NAME }}/signer/migrations).
+          Database migrations may be found at [\`signer/migrations\`](https://github.com/stacks-network/sbtc/tree/${{ env.TAG_NAME }}/signer/migrations).
+
+          **Important:** If you run your signer using the \`--migrate-db\` flag (which is the default when using the official docker images), the database will be automatically migrated to the latest version. If you do not use this flag, you must manually apply the migrations.
   
           ## 🛠️ Upgrade Instructions: <a id="upgrade-instructions">
   
@@ -176,6 +187,25 @@ jobs:
           4. Apply database migrations (only if not running with the \`--migrate-db\` flag)
           5. Update your sBTC images as specified above
           6. Restart your sBTC signer and blocklist client
+
+          ## 📝 What's Changed <a id="whats-changed">
+          ### Protocol Breaking Changes 🚨
+          __✏️ Move the protocol breaking changes (if any) here, otherwise delete this section.__
+
+          ### Local Breaking Changes ⚠️
+          __✏️ Move the local breaking changes (if any) here, otherwise delete this section.__
+
+          ### Other Changes
+          <details>
+          <summary>Click to expand</summary>
+
+          __✏️ Move the remaining changelog here.__
+          </details>
+
+          ## 👏 New Contributors
+          __✏️ Move the list of new contributors (if any) here, otherwise delete this section.__
+
+          __✏️ Move the "Full Changelog" link here.__
           EOF
   
       - name: Create GitHub Release
@@ -186,7 +216,7 @@ jobs:
           script: |
             const fs = require('fs');
             const releaseNotes = fs.readFileSync('release_notes.md', 'utf8');
-    
+              
             const release = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
