@@ -322,7 +322,6 @@ async fn test_updating_account_limits_via_global_limit_works() {
     };
 
     let chainstates: Vec<Chainstate> = (0..103)
-        .into_iter()
         .map(|height| new_test_chainstate(height, height, 0))
         .collect();
     let _ = batch_set_chainstates(&configuration, chainstates).await;
@@ -423,17 +422,16 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
     if let Some(window_size) = rolling_withdrawal_blocks {
         // Set some chainstates to make set_limits work
         let chainstates: Vec<Chainstate> = (0..window_size + 2)
-            .into_iter()
             .map(|height| new_test_chainstate(height, height, 0))
             .collect();
         let _ = batch_set_chainstates(&configuration, chainstates).await;
     }
 
     let result = apis::limits_api::set_limits(&configuration, limits.clone()).await;
-    assert_eq!(result.is_ok(), true);
+    assert!(result.is_ok());
 
     let global_limits = apis::limits_api::get_limits(&configuration).await;
-    assert_eq!(global_limits.is_ok(), true);
+    assert!(global_limits.is_ok());
     assert_eq!(global_limits.unwrap(), limits);
 }
 
@@ -456,7 +454,6 @@ async fn test_available_to_withdraw_no_chainstate_in_db_at_target_height() {
     };
     // Set some chainstates to make set_limits work
     let chainstates: Vec<Chainstate> = (0..110)
-        .into_iter()
         .map(|height| new_test_chainstate(height, height, 0))
         .collect();
     let _ = batch_set_chainstates(&configuration, chainstates).await;
@@ -513,7 +510,6 @@ async fn test_available_to_withdraw_success() {
     };
     // Set some chainstates to make set_limits work
     let chainstates: Vec<Chainstate> = (0..12)
-        .into_iter()
         .map(|height| new_test_chainstate(height, height, 0))
         .collect();
     let _ = batch_set_chainstates(&configuration, chainstates).await;

@@ -147,7 +147,7 @@ fn roundtrip_test(values: &[u64]) -> Result<(), String> {
 #[test_case(&[1, 2, 3, 4, 5, 6, 7, 8]; "sequential values")]
 #[test_case(&[1000, 10000, 100000, 1000000]; "logarithmic spacing")]
 fn test_specific_patterns(values: &[u64]) {
-    roundtrip_test(&values).expect("round-trip failed");
+    roundtrip_test(values).expect("round-trip failed");
 }
 
 #[test]

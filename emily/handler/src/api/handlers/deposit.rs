@@ -609,7 +609,7 @@ mod tests {
             .into_script()
     }
 
-    fn make_asigna_reclaim_script(pubkeys: &Vec<[u8; 32]>) -> ScriptBuf {
+    fn make_asigna_reclaim_script(pubkeys: &[[u8; 32]]) -> ScriptBuf {
         let mut pubkeys_iter = pubkeys.iter();
         let mut script = ScriptBuf::builder().push_opcode(opcodes::OP_DROP);
         script = script
@@ -637,7 +637,7 @@ mod tests {
             .unwrap()
             .reclaim_script();
         let pubkey_from_script = extract_reclaim_pubkeys_hash(&reclaim_script).unwrap();
-        assert_eq!(pubkey_from_script, hex::encode(Sha256::digest(&pubkey)));
+        assert_eq!(pubkey_from_script, hex::encode(Sha256::digest(pubkey)));
     }
 
     #[tokio::test]
@@ -718,7 +718,7 @@ mod tests {
     ) {
         let pubkeys_hex: String = pubkeys
             .iter()
-            .map(|key| hex::encode(key))
+            .map(hex::encode)
             .collect::<Vec<String>>()
             .join("-");
         let validated_pubkeys = validate_reclaim_pubkeys(&pubkeys_hex).unwrap();
