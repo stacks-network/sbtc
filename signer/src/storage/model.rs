@@ -102,7 +102,6 @@ pub struct BitcoinBlock {
     /// Block hash.
     pub block_hash: BitcoinBlockHash,
     /// Block height.
-    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub block_height: BitcoinBlockHeight,
     /// Hash of the parent block.
     pub parent_hash: BitcoinBlockHash,

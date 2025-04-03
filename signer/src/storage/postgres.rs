@@ -702,7 +702,11 @@ impl PgStore {
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
-        .map(|height| height.map(|height| BitcoinBlockHeight::from(height as i32)))
+        .map(|height| height.map(BitcoinBlockHeight::try_from))
+        .and_then(|opt| {
+            opt.map(|inner_res| inner_res.map_err(Error::ConversionDatabaseInt))
+                .transpose()
+        })
     }
 
     /// Return the txid of the bitcoin transaction that swept in the
