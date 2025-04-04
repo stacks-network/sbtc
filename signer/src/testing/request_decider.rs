@@ -25,6 +25,7 @@ use crate::testing;
 use crate::testing::storage::model::TestData;
 
 use hashbrown::HashSet;
+use rand::rngs::OsRng;
 use rand::SeedableRng as _;
 use tokio::sync::broadcast;
 use tokio::time::error::Elapsed;
@@ -231,7 +232,7 @@ where
     /// Assert that the transaction signer will make and store decisions
     /// for pending withdraw requests.
     pub async fn assert_should_store_decisions_for_pending_withdrawal_requests(self) {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(6);
+        let mut rng = OsRng;
         let wan_network = WanNetwork::default();
 
         let ctx1 = TestContext::default_mocked();
