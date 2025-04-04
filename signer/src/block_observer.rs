@@ -419,7 +419,6 @@ impl<C: Context, B> BlockObserver<C, B> {
             .map(|deposit| {
                 let tx = model::Transaction {
                     txid: deposit.tx_info.txid.to_byte_array(),
-                    tx: bitcoin::consensus::serialize(&deposit.tx_info.tx),
                     tx_type: model::TransactionType::DepositRequest,
                     block_hash: deposit.tx_info.block_hash.to_byte_array(),
                 };
@@ -498,7 +497,6 @@ impl<C: Context, B> BlockObserver<C, B> {
             let txid = tx.compute_txid();
             sbtc_txs.push(model::Transaction {
                 txid: txid.to_byte_array(),
-                tx: bitcoin::consensus::serialize(&tx),
                 tx_type,
                 block_hash: block_hash.to_byte_array(),
             });

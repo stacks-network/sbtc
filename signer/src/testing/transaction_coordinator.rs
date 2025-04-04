@@ -58,7 +58,7 @@ use super::context::WrappedMock;
 use super::wallet::WALLET;
 
 const EMPTY_BITCOIN_TX: bitcoin::Transaction = bitcoin::Transaction {
-    version: bitcoin::transaction::Version::ONE,
+    version: bitcoin::transaction::Version::TWO,
     lock_time: bitcoin::absolute::LockTime::ZERO,
     input: vec![],
     output: vec![],
@@ -925,16 +925,10 @@ where
         let original_test_data = test_data.clone();
 
         let tx = bitcoin::Transaction {
-            output: vec![
-                bitcoin::TxOut {
-                    value: bitcoin::Amount::from_sat(42),
-                    script_pubkey: aggregate_key.signers_script_pubkey(),
-                },
-                bitcoin::TxOut {
-                    value: bitcoin::Amount::from_sat(123),
-                    script_pubkey: bitcoin::ScriptBuf::new(),
-                },
-            ],
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(42),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
             ..EMPTY_BITCOIN_TX
         };
 

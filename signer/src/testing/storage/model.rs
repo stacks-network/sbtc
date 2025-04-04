@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use fake::Fake;
 
@@ -91,8 +90,7 @@ impl TestData {
     {
         let block = self.generate_bitcoin_block(rng, parent);
 
-        let stacks_blocks =
-            self.generate_stacks_blocks(rng, &block, params.num_stacks_blocks_per_bitcoin_block);
+        let stacks_blocks = self.generate_stacks_blocks(rng, &block, params);
 
         let deposit_data = DepositData::generate(
             rng,
@@ -177,12 +175,8 @@ impl TestData {
         let mut tx_outputs = Vec::new();
 
         for (tx_type, tx) in sbtc_txs {
-            let mut tx_bytes = Vec::new();
-            tx.consensus_encode(&mut tx_bytes).unwrap();
-
             let model_tx = model::Transaction {
                 txid: tx.compute_txid().to_byte_array(),
-                tx: tx_bytes,
                 tx_type,
                 block_hash: block.block_hash.into_bytes(),
             };
@@ -320,10 +314,10 @@ impl TestData {
         &self,
         rng: &mut impl rand::RngCore,
         new_bitcoin_block: &model::BitcoinBlock,
-        num_stacks_blocks: usize,
+        params: &Params,
     ) -> Vec<model::StacksBlock> {
         let mut stacks_block: model::StacksBlock = fake::Faker.fake_with_rng(rng);
-        stacks_block.bitcoin_anchor = new_bitcoin_block.parent_hash;
+        stacks_block.bitcoin_anchor = new_bitcoin_block.block_hash;
 
         let stacks_parent_block_summary = self
             .bitcoin_blocks
@@ -333,9 +327,14 @@ impl TestData {
                 let cands = self
                     .stacks_blocks
                     .iter()
-                    .filter(|stacks_block| stacks_block.bitcoin_anchor == b.parent_hash)
+                    .filter(|stacks_block| stacks_block.bitcoin_anchor == b.block_hash)
                     .collect::<Vec<_>>();
-                cands.choose(rng).cloned()
+
+                if params.consecutive_blocks {
+                    cands.last().cloned()
+                } else {
+                    cands.choose(rng).cloned()
+                }
             })
             .map(StacksBlockSummary::summarize)
             .unwrap_or_else(|| StacksBlockSummary::hallucinate_parent(&stacks_block));
@@ -343,6 +342,7 @@ impl TestData {
         stacks_block.parent_hash = stacks_parent_block_summary.block_hash;
         stacks_block.block_height = stacks_parent_block_summary.block_height + 1;
 
+        let num_stacks_blocks = params.num_stacks_blocks_per_bitcoin_block;
         let stacks_blocks = (1..num_stacks_blocks).fold(vec![stacks_block], |mut blocks, _| {
             let parent = blocks.last().unwrap(); // Guaranteed to be at least one block
 
