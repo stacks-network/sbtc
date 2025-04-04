@@ -137,7 +137,10 @@ class DepositProcessor:
         logger.info(f"Bitcoin chain tip: {bitcoin_chaintip_height}")
         logger.info(f"Stacks chain tip: {stacks_chaintip}")
 
-        # Fetch pending and accepted deposits
+        # Fetch pending and accepted deposits.
+        # Accepted deposits are included because Bitcoin forks could invalidate
+        # a previously accepted deposit, or a malicious signer may have modified
+        # a pending or invalid deposit to Accepted.
         pending_deposits = PrivateEmilyAPI.fetch_deposits(RequestStatus.PENDING)
         accepted_deposits = PrivateEmilyAPI.fetch_deposits(RequestStatus.ACCEPTED)
 
