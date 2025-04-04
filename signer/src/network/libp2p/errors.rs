@@ -16,4 +16,8 @@ pub enum SignerSwarmError {
     /// LibP2P error (with custom message)
     #[error("libp2p error: {0}")]
     LibP2PMessage(&'static str),
+
+    /// Generic swarm error
+    #[error("swarm error: {0}")]
+    Generic(&'static str),
 }

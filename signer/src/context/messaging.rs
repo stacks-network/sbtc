@@ -57,6 +57,8 @@ pub enum P2PEvent {
     MessageReceived(crate::network::Msg),
     /// Signals to the application that a new peer has connected to the P2P network.
     PeerConnected(libp2p::PeerId),
+    /// Event which occurs when the P2P network has started its event loop.
+    EventLoopStarted,
 }
 
 /// Events that can be triggered from the request decider.
