@@ -89,7 +89,7 @@ class EnrichedDepositInfo(DepositInfo):
             "confirmed_height": -1,
             "confirmed_time": -1,
         }
-        return cls(**asdict(d), **missing_data)
+        return cls.from_deposit_info(d, missing_data)
 
     def is_expired(self, bitcoin_chaintip_height: int) -> bool:
         """Check if the deposit's time-based expiry condition has been met.
@@ -132,14 +132,6 @@ class BlockInfo:
             height=j["height"],
             hash=j["hash"],
             time=j["block_time"],
-        )
-
-    @classmethod
-    def from_bitcoin(cls, j: dict[str, Any]) -> Self:
-        return cls(
-            height=j["height"],
-            hash=j["hash"],
-            time=datetime.fromisoformat(j["timestamp"].replace("Z", "+00:00")).timestamp(),
         )
 
 
