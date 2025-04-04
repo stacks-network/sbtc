@@ -44,7 +44,7 @@ class MempoolAPI(APIClient):
         Returns:
             dict: Status of the UTXO. Example:
                   {'spent': False} if unspent.
-                  {'spent': True, 'txid': 'spending_txid', 'status': {'confirmed': True/False}} if spent.
+                  {'spent': True, 'txid': 'spending_txid', 'vin': 0, 'status': {'confirmed': True/False}} if spent.
                   Returns empty dict if the original txid is not found or other errors.
         """
         # This endpoint returns spending info if spent, 404 or empty if not.
@@ -58,5 +58,6 @@ class MempoolAPI(APIClient):
             return {
                 "spent": True,
                 "txid": spending_info.get("txid"),
+                "vin": spending_info.get("vin"),
                 "status": {"confirmed": status.get("confirmed", False)},
             }

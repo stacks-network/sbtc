@@ -45,7 +45,6 @@ class DepositProcessor:
             logger.debug(f"Deposit {tx.bitcoin_txid} time expired, checking UTXO status...")
             utxo_status = MempoolAPI.get_utxo_status(tx.bitcoin_txid, tx.bitcoin_tx_output_index)
             is_utxo_spent = utxo_status.get("spent", False)
-
             if not is_utxo_spent:
                 # Case 1: Time expired AND UTXO is unspent -> Mark FAILED
                 logger.info(
@@ -63,35 +62,39 @@ class DepositProcessor:
 
             # Step 3: UTXO is spent, check if it was a reclaim
             spending_txid = utxo_status.get("txid")
-            if not spending_txid:
+            if spending_txid is None:
                 logger.warning(
                     f"Deposit {tx.bitcoin_txid} UTXO is spent, but spending TXID is missing from API response. Cannot check for reclaim."
                 )
-                continue  # Cannot determine reclaim, assume it's a signer sweep
+                continue  # Cannot determine reclaim, skip at this time
+            vin_index = utxo_status.get("vin")
+            if vin_index is None:
+                logger.warning(
+                    f"Deposit {tx.bitcoin_txid} UTXO spent by {spending_txid}, but no vin index found in API response. Cannot check for reclaim."
+                )
+                continue  # Cannot determine reclaim, skip at this time
 
             logger.debug(
                 f"Deposit {tx.bitcoin_txid} UTXO spent by {spending_txid}, checking for reclaim..."
             )
             spending_tx_details = MempoolAPI.get_transaction(spending_txid)
-            is_reclaim_check = False
-            if spending_tx_details:
-                for vin in spending_tx_details.get("vin", []):
-                    if (
-                        vin.get("txid") == tx.bitcoin_txid
-                        and vin.get("vout") == tx.bitcoin_tx_output_index
-                    ):
-                        witness_data = vin.get("witness", [])
-                        # Simple check: does witness contain the reclaim script?
-                        if any(tx.reclaim_script in item for item in witness_data):
-                            is_reclaim_check = True
-                            break
-            else:
+            if not spending_tx_details:
                 logger.warning(
                     f"Could not fetch spending tx details for {spending_txid} to check for reclaim of {tx.bitcoin_txid}."
                 )
-                # If we can't fetch the spending tx, we can't confirm reclaim.
-                # For safety, assume it might be a signer sweep.
-                continue
+                continue  # Cannot determine reclaim, skip at this time
+
+            vin = spending_tx_details.get("vin", [])
+            try:
+                vin = vin[vin_index]
+            except IndexError:
+                logger.warning(
+                    f"Deposit {tx.bitcoin_txid} UTXO spent by {spending_txid}, but vin index {vin_index} is out of bounds. Cannot check for reclaim."
+                )
+                continue  # Cannot determine reclaim, skip at this time
+            witness_data = vin.get("witness", [])
+            # Simple check: does witness contain the reclaim script?
+            is_reclaim_check = any(tx.reclaim_script in item for item in witness_data)
 
             if is_reclaim_check:
                 # Case 2: Time expired, UTXO spent, AND identified as reclaim -> Mark FAILED

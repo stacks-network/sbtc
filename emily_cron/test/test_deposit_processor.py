@@ -132,6 +132,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         utxo_status_spent = {
             "spent": True,
             "txid": "signer_sweep_tx",
+            "vin": 0,
             "status": {"confirmed": False},
         }
         spending_tx_signer = {
@@ -188,6 +189,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         utxo_status_reclaim = {
             "spent": True,
             "txid": "reclaim_spending_tx",
+            "vin": 0,
             "status": {"confirmed": True},
         }
         spending_tx_reclaim = {
@@ -257,8 +259,8 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         # Mock UTXO Statuses (maps (txid, vout) -> status_dict)
         utxo_statuses = {
             ("exp_unspent", 0): {"spent": False},
-            ("exp_signer", 0): {"spent": True, "txid": "signer_tx"},
-            ("reclaimed", 0): {"spent": True, "txid": "reclaim_tx"},
+            ("exp_signer", 0): {"spent": True, "txid": "signer_tx", "vin": 0},
+            ("reclaimed", 0): {"spent": True, "txid": "reclaim_tx", "vin": 0},
             # No entries needed for active_unspent or unconfirmed as time check fails
         }
 
@@ -347,7 +349,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
             self.assertEqual(updates_unspent[0].bitcoin_txid, "edge_case_unspent")
 
         # --- Test Spent (Signer) Case ---
-        utxo_status_edge_spent = {"spent": True, "txid": "edge_signer_tx"}
+        utxo_status_edge_spent = {"spent": True, "txid": "edge_signer_tx", "vin": 0}
         spending_tx_edge_signer = {
             "vin": [{"txid": "edge_case_spent", "vout": 0, "witness": ["sig"]}]
         }
