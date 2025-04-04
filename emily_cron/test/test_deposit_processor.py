@@ -49,47 +49,36 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
             txid="confirmed_expired_unspent",
             confirmed_height=890,  # Confirmed 110 blocks ago (890 + 50 + 6 = 946 < 1000)
             lock_time=50,  # Locktime of 50 blocks
-            utxo_spent=False,
         )
 
         self.confirmed_expired_spent_mempool = self._create_mock_deposit(
             txid="confirmed_expired_spent_mempool",
             confirmed_height=890,  # Confirmed 110 blocks ago
             lock_time=50,  # Locktime of 50 blocks
-            utxo_spent=True,
-            spending_tx_confirmed=False,  # Spent in mempool
-            spending_txid="sweep_tx_mempool",
         )
 
         self.confirmed_expired_spent_confirmed = self._create_mock_deposit(
             txid="confirmed_expired_spent_confirmed",
             confirmed_height=890,  # Confirmed 110 blocks ago
             lock_time=50,  # Locktime of 50 blocks
-            utxo_spent=True,
-            spending_tx_confirmed=True,  # Spent and confirmed
-            spending_txid="sweep_tx_confirmed",
         )
 
         self.confirmed_active_unspent = self._create_mock_deposit(
             txid="confirmed_active_unspent",
             confirmed_height=990,  # Confirmed 10 blocks ago (990 + 50 + 6 = 1046 > 1000)
             lock_time=50,  # Locktime of 50 blocks
-            utxo_spent=False,
         )
 
         self.confirmed_active_spent = self._create_mock_deposit(
             txid="confirmed_active_spent",
             confirmed_height=990,  # Confirmed 10 blocks ago
             lock_time=50,  # Locktime of 50 blocks
-            utxo_spent=True,
-            spending_txid="sweep_tx_active_spent",
         )
 
         self.unconfirmed = self._create_mock_deposit(
             txid="unconfirmed",
             confirmed_height=-1,  # Not confirmed
             lock_time=20,
-            utxo_spent=False,
         )
 
     def _create_mock_deposit(
@@ -97,18 +86,12 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         txid,
         confirmed_height,
         lock_time,
-        utxo_spent=False,
-        spending_tx_confirmed=False,
-        spending_txid=None,
     ):
         deposit = MagicMock(spec=EnrichedDepositInfo)
         deposit.bitcoin_txid = txid
         deposit.bitcoin_tx_output_index = 0
         deposit.confirmed_height = confirmed_height
         deposit.lock_time = lock_time
-        deposit.utxo_spent = utxo_spent
-        deposit.spending_tx_confirmed = spending_tx_confirmed
-        deposit.spending_txid = spending_txid
 
         # Mock the is_expired method to use the real logic
         deposit.is_expired = lambda x: EnrichedDepositInfo.is_expired(deposit, x)
@@ -176,8 +159,6 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
                 txid="confirmed_expired_spent_mempool",
                 confirmed_height=890,
                 lock_time=50,
-                utxo_spent=True,
-                spending_txid="signer_sweep_tx",
             )
             deposit_with_script.reclaim_script = "reclaim_hex_placeholder"  # Assign a dummy script
 
@@ -199,8 +180,6 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
             txid="reclaimed_tx",
             confirmed_height=890,
             lock_time=64,  # Matches hex above for consistency
-            utxo_spent=True,
-            spending_txid="reclaim_spending_tx",
         )
         # Assign the actual reclaim script hex used in the mocked spending tx witness
         reclaimed_deposit.reclaim_script = reclaim_script_hex
@@ -418,7 +397,6 @@ class TestDepositProcessor(unittest.TestCase):
         expired_locktime.bitcoin_tx_output_index = 0
         expired_locktime.confirmed_height = 890  # Confirmed 110 blocks ago
         expired_locktime.lock_time = 50  # Locktime of 50 blocks
-        expired_locktime.utxo_spent = False  # Unspent, so it should expire
         expired_locktime.is_expired = lambda x: EnrichedDepositInfo.is_expired(expired_locktime, x)
 
         # Create a deposit with non-expired locktime
@@ -427,7 +405,6 @@ class TestDepositProcessor(unittest.TestCase):
         active_locktime.bitcoin_tx_output_index = 0
         active_locktime.confirmed_height = 990  # Confirmed 10 blocks ago
         active_locktime.lock_time = 50  # Locktime of 50 blocks
-        active_locktime.utxo_spent = False
         active_locktime.is_expired = lambda x: EnrichedDepositInfo.is_expired(active_locktime, x)
 
         return {
@@ -495,10 +472,6 @@ class TestDepositProcessor(unittest.TestCase):
                 "fee": 100,
                 "confirmed_height": 890,
                 "confirmed_time": 12345,
-                "utxo_spent": False,
-                "spending_tx_confirmed": False,
-                "spending_txid": None,
-                "is_reclaim": None,
             },
         )
         # Ensure the active deposit uses the correct (non-expiring) reclaim script info implicitly via asdict
@@ -509,10 +482,6 @@ class TestDepositProcessor(unittest.TestCase):
                 "fee": 200,
                 "confirmed_height": 990,
                 "confirmed_time": 12346,
-                "utxo_spent": False,
-                "spending_tx_confirmed": False,
-                "spending_txid": None,
-                "is_reclaim": None,
             },
         )
         mock_enrich.return_value = [expired_deposit_enriched, active_deposit_enriched]
@@ -605,6 +574,19 @@ class TestDepositProcessor(unittest.TestCase):
             deposit_script="deposit4",
         )
 
+        deposit5 = DepositInfo(  # In mempool, but not confirmed yet
+            bitcoin_txid="tx5",
+            bitcoin_tx_output_index=0,
+            recipient="r5",
+            amount=90000,
+            last_update_height=940,
+            last_update_block_hash="h5",
+            status="pending",
+            reclaim_script="reclaim5",
+            deposit_script="deposit5",
+        )
+
+
         mock_get_tx.side_effect = lambda txid: {
             "tx1": {
                 "vin": [{"prevout": {"value": 2000000}}],
@@ -622,49 +604,53 @@ class TestDepositProcessor(unittest.TestCase):
                 "status": {"block_height": 1001, "block_time": self.current_time - 1800},
             },
             "tx3": None,  # TX not found
-            "tx4": {"status": {"block_height": 930}},  # Minimal data for deposit4
+            "tx4": {
+                "fee": 10000,
+                "status": {"block_height": 930, "block_time": self.current_time - 900}},  # Minimal data for deposit4
+            "tx5": {"fee": 10000, "status": {"confirmed": False}}  # In-flight
         }.get(txid)
 
         # Run the _enrich_deposits method
-        result = self.processor._enrich_deposits([deposit1, deposit2, deposit3, deposit4])
+        result = self.processor._enrich_deposits([deposit1, deposit2, deposit3, deposit4, deposit5])
 
         # Verify the correct API calls were made (only get_transaction)
         mock_get_tx.assert_any_call("tx1")
         mock_get_tx.assert_any_call("tx2")
         mock_get_tx.assert_any_call("tx3")
         mock_get_tx.assert_any_call("tx4")
-
+        mock_get_tx.assert_any_call("tx5")
         # Verify the result contains enriched deposits WITHOUT utxo/reclaim info
-        self.assertEqual(len(result), 4)
+        self.assertEqual(len(result), 5)
 
         enriched1 = next(r for r in result if r.bitcoin_txid == "tx1")
-        self.assertTrue(hasattr(enriched1, "utxo_spent"))  # Field exists
-        # Assert default values since _enrich_deposits no longer sets these
-        self.assertFalse(enriched1.utxo_spent)
-        self.assertIsNone(enriched1.spending_txid)
-        self.assertFalse(enriched1.spending_tx_confirmed)
-        self.assertIsNone(enriched1.is_reclaim)
+        self.assertTrue(enriched1.in_mempool)
+        self.assertEqual(enriched1.fee, 100000)
+        self.assertEqual(enriched1.confirmed_height, 1000)
+        self.assertEqual(enriched1.confirmed_time, self.current_time - 3600)
 
         enriched2 = next(r for r in result if r.bitcoin_txid == "tx2")
-        self.assertFalse(enriched2.utxo_spent)  # Should be default False
-        self.assertIsNone(enriched2.spending_txid)  # Should be default None
-        self.assertIsNone(enriched2.is_reclaim)  # Should be default None
+        self.assertTrue(enriched2.in_mempool)
+        self.assertEqual(enriched2.fee, 10000)
+        self.assertEqual(enriched2.confirmed_height, 1001)
+        self.assertEqual(enriched2.confirmed_time, self.current_time - 1800)
 
         enriched3 = next(r for r in result if r.bitcoin_txid == "tx3")  # This uses from_missing
         self.assertFalse(enriched3.in_mempool)
-        self.assertFalse(enriched3.utxo_spent)
-        self.assertIsNone(enriched3.is_reclaim)
+        self.assertEqual(enriched3.confirmed_height, -1)
+        self.assertEqual(enriched3.confirmed_time, -1)
+        self.assertEqual(enriched3.fee, -1)
 
         enriched4 = next(r for r in result if r.bitcoin_txid == "tx4")
-        # Assert default values since _enrich_deposits no longer sets these
-        self.assertFalse(enriched4.utxo_spent)
-        self.assertIsNone(enriched4.spending_txid)
-        self.assertFalse(enriched4.spending_tx_confirmed)
-        self.assertIsNone(enriched4.is_reclaim)
+        self.assertTrue(enriched4.in_mempool)
+        self.assertEqual(enriched4.confirmed_height, 930)
+        self.assertEqual(enriched4.confirmed_time, self.current_time - 900)
+        self.assertEqual(enriched4.fee, 10000)
 
-
-# ---- Integration-style tests using real tx data from Emily ----
-
+        enriched5 = next(r for r in result if r.bitcoin_txid == "tx5")
+        self.assertTrue(enriched5.in_mempool)
+        self.assertEqual(enriched5.fee, 10000)
+        self.assertEqual(enriched5.confirmed_height, -1)
+        self.assertEqual(enriched5.confirmed_time, -1)
 
 class TestDepositProcessorIntegration(unittest.TestCase):
     """Integration-style tests for the deposit update workflow using example txids."""

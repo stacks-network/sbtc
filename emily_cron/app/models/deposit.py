@@ -75,11 +75,6 @@ class EnrichedDepositInfo(DepositInfo):
     fee: int
     confirmed_height: int
     confirmed_time: int
-    utxo_spent: bool = False  # Whether the deposit UTXO has been spent
-    spending_tx_confirmed: bool = False  # If spent, whether the spending tx is confirmed
-    spending_txid: Optional[str] = None  # If spent, the txid of the spending transaction
-    is_reclaim: Optional[bool] = None  # If spent, whether it was likely a depositor reclaim
-    # was_minted: bool
 
     @classmethod
     def from_deposit_info(cls, d: DepositInfo, additional_data: dict) -> Self:
@@ -93,10 +88,6 @@ class EnrichedDepositInfo(DepositInfo):
             "fee": -1,
             "confirmed_height": -1,
             "confirmed_time": -1,
-            "utxo_spent": False,
-            "spending_tx_confirmed": False,
-            "spending_txid": None,
-            "is_reclaim": None,  # Initialize is_reclaim
         }
         return cls(**asdict(d), **missing_data)
 
