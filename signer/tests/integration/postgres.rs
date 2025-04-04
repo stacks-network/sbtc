@@ -5074,7 +5074,7 @@ async fn verification_status_one_way_street() {
 
 /// Return a stacks block that is anchored to the bitcoin block with the
 /// given block hash that is also on the canonical stacks blockchain, if
-/// one exists. If one doesn't exist then return the stacks chain tip.
+/// one exists. If one doesn't exist then panic.
 async fn get_stacks_block(
     test_data: &TestData,
     db: &PgStore,
@@ -5102,7 +5102,7 @@ async fn get_stacks_block(
         }
     }
 
-    stacks_chain_tip
+    panic!("could not find a stacks block with the given anchor");
 }
 
 /// Tests that get_pending_rejected_withdrawal_requests correctly return expired
