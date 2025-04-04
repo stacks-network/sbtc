@@ -7,18 +7,23 @@ genesis:
     - name: deployer
       address: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
       balance: "100000000000000"
+      sbtc-balance: "1000000000"
     - name: faucet
       address: STNHKEPYEPJ8ET55ZZ0M5A34J0R3N5FM2CMMMAZ6
       balance: "100000000000000"
+      sbtc-balance: "1000000000"
     - name: wallet_1
       address: ST1YEHRRYJ4GF9CYBFFN0ZVCXX1APSBEEQ5KEDN7M
       balance: "100000000000000"
+      sbtc-balance: "1000000000"
     - name: wallet_2
       address: ST1WNJTS9JM1JYGK758B10DBAMBZ0K23ADP392SBV
       balance: "100000000000000"
+      sbtc-balance: "1000000000"
     - name: wallet_3
       address: ST1MDWBDVDGAANEH9001HGXQA6XRNK7PX7A7X8M6R
       balance: "100000000000000"
+      sbtc-balance: "1000000000"
   contracts:
     - costs
     - pox
