@@ -1,8 +1,6 @@
 import logging
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
-from ..models import BlockInfo
 from .base import APIClient
 from .. import settings
 

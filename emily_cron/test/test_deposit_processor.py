@@ -416,9 +416,7 @@ class TestDepositProcessor(unittest.TestCase):
     @patch("app.clients.PrivateEmilyAPI.update_deposits")
     @patch("app.clients.MempoolAPI.get_tip_height")
     @patch("app.clients.HiroAPI.get_stacks_block")
-    @patch(
-        "app.services.deposit_processor.DepositProcessor._enrich_deposits"
-    )
+    @patch("app.services.deposit_processor.DepositProcessor._enrich_deposits")
     def test_update_deposits_workflow_with_failures(
         self,
         mock_enrich,  # Order matters
@@ -586,7 +584,6 @@ class TestDepositProcessor(unittest.TestCase):
             deposit_script="deposit5",
         )
 
-
         mock_get_tx.side_effect = lambda txid: {
             "tx1": {
                 "vin": [{"prevout": {"value": 2000000}}],
@@ -652,6 +649,7 @@ class TestDepositProcessor(unittest.TestCase):
         self.assertEqual(enriched5.confirmed_height, -1)
         self.assertEqual(enriched5.confirmed_time, -1)
 
+
 class TestDepositProcessorIntegration(unittest.TestCase):
     """Integration-style tests for the deposit update workflow using example txids."""
 
@@ -683,7 +681,6 @@ class TestDepositProcessorIntegration(unittest.TestCase):
         mock_update_deposits,
     ):
         """Verify a known reclaimed deposit is correctly identified and marked FAILED."""
-        # --- Mock Setup ---
         mock_btc_tip_height.return_value = self.bitcoin_chaintip_height
         mock_stacks_block.return_value = self.stacks_chaintip
 
@@ -793,7 +790,9 @@ class TestMempoolAPI(unittest.TestCase):
         tx_data = MempoolAPI.get_transaction(ACCEPTED_DEPOSIT_DATA["bitcoin_txid"])
         self.assertEqual(tx_data["txid"], ACCEPTED_DEPOSIT_DATA["bitcoin_txid"])
         self.assertEqual(tx_data["vout"][0]["value"], ACCEPTED_DEPOSIT_DATA["amount"])
-        mock_get.assert_called_once_with(f"/tx/{ACCEPTED_DEPOSIT_DATA['bitcoin_txid']}", ignore_errors=True)
+        mock_get.assert_called_once_with(
+            f"/tx/{ACCEPTED_DEPOSIT_DATA['bitcoin_txid']}", ignore_errors=True
+        )
 
         # Test getting a spending transaction
         mock_get.reset_mock()
@@ -801,7 +800,9 @@ class TestMempoolAPI(unittest.TestCase):
         tx_data = MempoolAPI.get_transaction(ACCEPTED_SPENDING_TX_DATA["txid"])
         self.assertEqual(tx_data["txid"], ACCEPTED_SPENDING_TX_DATA["txid"])
         self.assertEqual(len(tx_data["vin"]), 2)  # Has two inputs
-        mock_get.assert_called_once_with(f"/tx/{ACCEPTED_SPENDING_TX_DATA['txid']}", ignore_errors=True)
+        mock_get.assert_called_once_with(
+            f"/tx/{ACCEPTED_SPENDING_TX_DATA['txid']}", ignore_errors=True
+        )
 
     @patch("app.clients.base.APIClient.get")
     def test_get_utxo_status(self, mock_get):
@@ -842,8 +843,6 @@ class TestMempoolAPI(unittest.TestCase):
             INFLIGHT_UTXO_STATUS["txid"], INFLIGHT_UTXO_STATUS["vin"]
         )
         self.assertFalse(utxo_status["spent"])
-        # FIX: Removed assertion for status.confirmed as it's not returned when spent=False
-        # self.assertFalse(utxo_status["status"]["confirmed"])
         mock_get.assert_called_once_with(
             f"/tx/{INFLIGHT_UTXO_STATUS['txid']}/outspend/{INFLIGHT_UTXO_STATUS['vin']}",
             ignore_errors=True,
