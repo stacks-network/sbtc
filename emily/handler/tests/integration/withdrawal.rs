@@ -419,6 +419,7 @@ async fn update_withdrawals() {
     let update_chainstate = Chainstate {
         stacks_block_hash: "update_block_hash".to_string(),
         stacks_block_height: 42,
+        bitcoin_block_height: Some(Some(42)),
     };
     let update_status: Status = Status::Confirmed;
 
@@ -545,6 +546,7 @@ async fn update_withdrawals_is_forbidden(
     let chainstate = Chainstate {
         stacks_block_hash: "test_block_hash".to_string(),
         stacks_block_height: 1,
+        bitcoin_block_height: Some(Some(1)),
     };
 
     set_chainstate(&testing_configuration, chainstate.clone())

@@ -45,7 +45,7 @@ bitcoincore-rpc = { version = "0.19.0", default-features = false }
 bitcoincore-rpc-json = { version = "0.19.0", default-features = false }
 bitcoincore-zmq = { version = "1.5.2", default-features = false, features = ["async"] }
 bitvec = { version = "1.0.1", default-features = false, features = ["serde"] }
-clap = { version = "4.5.27", default-features = false, features = ["derive", "env", "std"] }
+clap = { version = "4.5.27", default-features = false, features = ["derive", "env", "std", "help"] }
 config = { version = "0.14.1", default-features = false, features = ["toml"] }
 futures = { version = "0.3.31", default-features = false }
 hashbrown = { version = "0.14.5", default-features = false }

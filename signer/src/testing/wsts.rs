@@ -12,10 +12,10 @@ use stacks_common::address::AddressHashMode;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
 use stacks_common::types::chainstate::StacksAddress;
 use wsts::net::SignatureType;
-use wsts::state_machine::coordinator;
-use wsts::state_machine::coordinator::fire;
-use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::StateMachine as _;
+use wsts::state_machine::coordinator;
+use wsts::state_machine::coordinator::Coordinator as _;
+use wsts::state_machine::coordinator::fire;
 
 use crate::ecdsa::SignEcdsa as _;
 use crate::keys::PrivateKey;

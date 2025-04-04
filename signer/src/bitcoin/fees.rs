@@ -229,7 +229,7 @@ mod tests {
     async fn estimate_fee_rate_impl_happy_path() {
         let mempool_body =
             r#"{"fastestFee":13,"halfHourFee":11,"hourFee":11,"economyFee":10,"minimumFee":5}"#;
-        // I've cut out some of the bodys here. There are keys for:
+        // I've cut out some of the bodies here. There are keys for:
         // 120, 180, 360, 720, and 1440.
         // Also, I've modified the timestamp to be very far in the future.
         let bitcoiner_body = r#"{

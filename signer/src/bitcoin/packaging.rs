@@ -397,8 +397,8 @@ where
     /// ## Returns
     /// - `true` if the IDs will fit within the OP_RETURN size limits.
     /// - `false` if the IDs exceed the size limits, or an error occurs during
-    ///    estimation (for example if the id's have become unsorted or contain
-    ///    duplicates).
+    ///   estimation (for example if the id's have become unsorted or contain
+    ///   duplicates).
     fn can_fit_withdrawal_ids(&self, ids: &[u64]) -> bool {
         if ids.is_empty() {
             return true;

@@ -1,4 +1,4 @@
-# sTBTC Signer Configuration
+# sBTC Signer Configuration
 
 The sBTC signer configuration is contained within this directory as `signer-config.toml`.
 
