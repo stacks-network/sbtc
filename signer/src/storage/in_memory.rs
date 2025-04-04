@@ -278,7 +278,7 @@ impl Store {
         let context_window_end_block = std::iter::successors(first_block, |block| {
             Some(self.bitcoin_blocks.get(&block.parent_hash).unwrap_or(block))
         })
-        .nth(context_window as usize - 1);
+        .nth(context_window as usize);
 
         let Some(context_window_end_block) = context_window_end_block else {
             return Vec::new();
