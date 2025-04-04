@@ -5102,7 +5102,7 @@ async fn get_stacks_block(
         }
     }
 
-    panic!("could not find a stacks block with the given anchor");
+    panic!("could not find a stacks block with the given anchor: {anchor}");
 }
 
 /// Tests that get_pending_rejected_withdrawal_requests correctly return expired
