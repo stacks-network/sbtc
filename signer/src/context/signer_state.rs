@@ -12,6 +12,7 @@ use libp2p::PeerId;
 
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::model::BitcoinBlockRef;
 
 /// A struct for holding internal signer state. This struct is served by
@@ -116,16 +117,16 @@ impl SignerState {
     }
 
     /// Get the sbtc start height
-    pub fn get_sbtc_bitcoin_start_height(&self) -> u64 {
-        self.sbtc_bitcoin_start_height.load(Ordering::SeqCst)
+    pub fn get_sbtc_bitcoin_start_height(&self) -> BitcoinBlockHeight {
+        self.sbtc_bitcoin_start_height.load(Ordering::SeqCst).into()
     }
 
     /// Set the sbtc start height
-    pub fn set_sbtc_bitcoin_start_height(&self, height: u64) {
+    pub fn set_sbtc_bitcoin_start_height(&self, height: BitcoinBlockHeight) {
         self.is_sbtc_bitcoin_start_height_set
             .store(true, Ordering::SeqCst);
         self.sbtc_bitcoin_start_height
-            .store(height, Ordering::SeqCst);
+            .store(*height, Ordering::SeqCst);
     }
 
     /// Return whether the sbtc start height has been set.
@@ -146,7 +147,7 @@ impl Default for SignerState {
             // The block hash here is often used as the parent block hash
             // of the genesis block on bitcoin.
             bitcoin_chain_tip: RwLock::new(BitcoinBlockRef {
-                block_height: 0,
+                block_height: 0u64.into(),
                 block_hash: BitcoinBlockHash::from([0; 32]),
             }),
         }

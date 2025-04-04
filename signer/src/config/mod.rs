@@ -27,6 +27,7 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::network::libp2p::MultiaddrExt as _;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::model::BitcoinBlockHeight;
 
 mod error;
 mod serialization;
@@ -330,7 +331,7 @@ pub struct SignerConfig {
     pub dkg_begin_pause: Option<u64>,
     /// The minimum bitcoin block height for which the sbtc signers will
     /// backfill bitcoin blocks to.
-    pub sbtc_bitcoin_start_height: Option<u64>,
+    pub sbtc_bitcoin_start_height: Option<BitcoinBlockHeight>,
     /// The maximum number of deposit inputs that will be included in a
     /// single bitcoin transaction. Transactions must be constructed within
     /// a tenure of a bitcoin block, and higher values here imply lower
@@ -342,7 +343,7 @@ pub struct SignerConfig {
     /// already been run, the coordinator will attempt to re-run DKG after this
     /// block height is met if `dkg_target_rounds` has not been reached. If DKG
     /// has never been run, this configuration has no effect.
-    pub dkg_min_bitcoin_block_height: Option<NonZeroU64>,
+    pub dkg_min_bitcoin_block_height: Option<BitcoinBlockHeight>,
     /// Configures a target number of DKG rounds to run/accept. If this is set
     /// and the number of DKG shares is less than this number, the coordinator
     /// will continue to run DKG rounds until this number of rounds is reached,
@@ -633,7 +634,10 @@ mod tests {
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
-        assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101));
+        assert_eq!(
+            settings.signer.sbtc_bitcoin_start_height,
+            Some(101u64.into())
+        );
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
         assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
@@ -799,7 +803,7 @@ mod tests {
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(
             settings.signer.dkg_min_bitcoin_block_height,
-            Some(NonZeroU64::new(42).unwrap())
+            Some(42u64.into())
         );
     }
 
@@ -864,7 +868,7 @@ mod tests {
         let settings = Settings::new_from_default_config().unwrap();
         let height = settings.signer.sbtc_bitcoin_start_height.unwrap();
 
-        assert_eq!(height, 12345);
+        assert_eq!(height, 12345u64.into());
     }
 
     #[test]

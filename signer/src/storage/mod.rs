@@ -24,6 +24,7 @@ use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
@@ -206,7 +207,7 @@ pub trait DbRead {
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         stacks_chain_tip: &model::StacksBlockHash,
-        min_bitcoin_height: u64,
+        min_bitcoin_height: BitcoinBlockHeight,
         signature_threshold: u16,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 

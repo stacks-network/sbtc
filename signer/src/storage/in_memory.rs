@@ -20,6 +20,7 @@ use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
@@ -358,8 +359,8 @@ impl super::DbRead for SharedStore {
         // than the height of the next block, which is the block for which we are assessing
         // the threshold.
         let minimum_acceptable_unlock_height =
-            store.bitcoin_blocks.get(chain_tip).unwrap().block_height as u32
-                + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32
+            store.bitcoin_blocks.get(chain_tip).unwrap().block_height
+                + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u64
                 + 1;
 
         // Get all canonical blocks in the context window.
@@ -384,7 +385,7 @@ impl super::DbRead for SharedStore {
                     .filter_map(|block_hash| store.bitcoin_blocks.get(block_hash))
                     .map(|block_included: &model::BitcoinBlock| {
                         let unlock_height =
-                            block_included.block_height as u32 + deposit_request.lock_time;
+                            block_included.block_height + deposit_request.lock_time as u64;
                         unlock_height >= minimum_acceptable_unlock_height
                     })
                     .next()
@@ -511,7 +512,7 @@ impl super::DbRead for SharedStore {
         &self,
         _bitcoin_chain_tip: &model::BitcoinBlockHash,
         _stacks_chain_tip: &model::StacksBlockHash,
-        _min_bitcoin_height: u64,
+        _min_bitcoin_height: BitcoinBlockHeight,
         _threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         unimplemented!();

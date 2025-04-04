@@ -787,7 +787,9 @@ async fn next_headers_to_process_gets_all_headers() {
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = Some(START_HEIGHT))
+        .modify_settings(|settings| {
+            settings.signer.sbtc_bitcoin_start_height = Some(START_HEIGHT.into())
+        })
         .with_first_bitcoin_core_client()
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
@@ -815,8 +817,8 @@ async fn next_headers_to_process_gets_all_headers() {
     assert_eq!(headers, sorted_headers);
 
     let start_height = ctx.state().get_sbtc_bitcoin_start_height();
-    assert_eq!(start_height, START_HEIGHT);
-    assert_eq!(START_HEIGHT, headers[0].height);
+    assert_eq!(start_height, START_HEIGHT.into());
+    assert_eq!(START_HEIGHT, *headers[0].height);
     assert_eq!(headers.last().map(|header| header.hash), Some(chain_tip));
 
     // Let's make sure that if we generate a new block, that we
@@ -828,7 +830,7 @@ async fn next_headers_to_process_gets_all_headers() {
         .next_headers_to_process(chain_tip)
         .await
         .unwrap();
-    assert_eq!(START_HEIGHT, headers[0].height);
+    assert_eq!(START_HEIGHT, *headers[0].height);
     assert_eq!(headers2.len(), headers.len() + 1);
     assert_eq!(headers2.last().map(|header| header.hash), Some(chain_tip));
 

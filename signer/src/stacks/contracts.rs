@@ -53,6 +53,7 @@ use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::DbRead;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::DkgSharesStatus;
@@ -303,7 +304,7 @@ pub struct CompleteDepositV1 {
     /// that is included in this block.
     pub sweep_block_hash: BitcoinBlockHash,
     /// The block height associated with the above bitcoin block hash.
-    pub sweep_block_height: u64,
+    pub sweep_block_height: BitcoinBlockHeight,
 }
 
 impl AsTxPayload for CompleteDepositV1 {
@@ -338,7 +339,7 @@ impl AsContractCall for CompleteDepositV1 {
             ClarityValue::UInt(self.amount as u128),
             ClarityValue::Principal(self.recipient.clone()),
             ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
-            ClarityValue::UInt(self.sweep_block_height as u128),
+            ClarityValue::UInt(self.sweep_block_height.into()),
             ClarityValue::Sequence(SequenceData::Buffer(sweep_txid)),
         ]
     }
@@ -652,7 +653,7 @@ pub struct AcceptWithdrawalV1 {
     /// is included in this block.
     pub sweep_block_hash: BitcoinBlockHash,
     /// The block height associated with the above bitcoin block hash.
-    pub sweep_block_height: u64,
+    pub sweep_block_height: BitcoinBlockHeight,
 }
 
 impl AsTxPayload for AcceptWithdrawalV1 {
@@ -687,7 +688,7 @@ impl AsContractCall for AcceptWithdrawalV1 {
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.tx_fee as u128),
             ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
-            ClarityValue::UInt(self.sweep_block_height as u128),
+            ClarityValue::UInt(self.sweep_block_height.into()),
             ClarityValue::Sequence(SequenceData::Buffer(txid)),
         ]
     }
@@ -1172,7 +1173,7 @@ impl AsContractCall for RejectWithdrawalV1 {
             .block_height
             .saturating_sub(report.bitcoin_block_height);
 
-        if blocks_observed <= WITHDRAWAL_BLOCKS_EXPIRY {
+        if blocks_observed <= WITHDRAWAL_BLOCKS_EXPIRY.into() {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
         }
 
@@ -1577,7 +1578,7 @@ mod tests {
             deployer: StacksAddress::burn_address(false),
             sweep_txid: BitcoinTxId::from([0; 32]),
             sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-            sweep_block_height: 7,
+            sweep_block_height: 7u64.into(),
         };
 
         let _ = call.as_contract_call();
@@ -1598,7 +1599,7 @@ mod tests {
             signer_bitmap: 0,
             deployer: StacksAddress::burn_address(false),
             sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-            sweep_block_height: 7,
+            sweep_block_height: 7u64.into(),
         };
 
         let _ = call.as_contract_call();

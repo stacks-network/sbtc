@@ -45,6 +45,7 @@ use crate::stacks::api::SubmitTxResponse;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::testing::dummy;
 use crate::util::ApiFallbackClient;
 
@@ -70,10 +71,10 @@ impl TestHarness {
     }
 
     /// The minimum block height amount blocks in this blockchain
-    pub fn min_block_height(&self) -> Option<u64> {
+    pub fn min_block_height(&self) -> Option<BitcoinBlockHeight> {
         self.bitcoin_blocks
             .iter()
-            .map(|block| block.bip34_block_height().unwrap())
+            .map(|block| block.bip34_block_height().unwrap().into())
             .min()
     }
 
@@ -228,7 +229,7 @@ impl BitcoinInteract for TestHarness {
             .find(|block| &block.block_hash() == block_hash)
             .map(|block| BitcoinBlockHeader {
                 hash: *block_hash,
-                height: block.bip34_block_height().unwrap(),
+                height: block.bip34_block_height().unwrap().into(),
                 time: block.header.time as u64,
                 previous_block_hash: block.header.prev_blockhash,
             }))

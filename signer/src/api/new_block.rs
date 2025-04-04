@@ -103,7 +103,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 
     let stacks_chaintip = StacksBlock {
         block_hash: new_block_event.index_block_hash.into(),
-        block_height: new_block_event.block_height,
+        block_height: new_block_event.block_height.into(),
         parent_hash: new_block_event.parent_index_block_hash.into(),
         bitcoin_anchor: new_block_event.burn_block_hash.into(),
     };
@@ -111,7 +111,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 
     let span = tracing::span::Span::current();
     span.record("block_hash", stacks_chaintip.block_hash.to_hex());
-    span.record("block_height", stacks_chaintip.block_height);
+    span.record("block_height", *stacks_chaintip.block_height);
     span.record("parent_hash", stacks_chaintip.parent_hash.to_hex());
     span.record("bitcoin_anchor", stacks_chaintip.bitcoin_anchor.to_string());
 

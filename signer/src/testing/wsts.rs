@@ -426,7 +426,7 @@ impl SignerSet {
 
         let started_at = model::BitcoinBlockRef {
             block_hash: bitcoin_chain_tip,
-            block_height: 0,
+            block_height: 0u64.into(),
         };
 
         (
