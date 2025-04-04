@@ -9,7 +9,8 @@ This release process targets the following goals:
 1. Ensure there exists a clear _separation of duties_ between those who _write_
    the code and those who _release_ it (and announce its release).
 1. Ensure that, under no circumstances, a single individual or entity is a
-   single point of (security) failure or otherwise unanimously compromise the security of the sBTC protocol or its projects.
+   single point of (security) failure or otherwise can single-handedly
+   compromise the security of the sBTC protocol or its projects.
 
 It implements (1) by leveraging GitHub rulesets for branch/tag protection and
 attestation for artifacts, (2) through the announcement process (described
