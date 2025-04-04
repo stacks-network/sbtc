@@ -274,7 +274,7 @@ impl TestSweepSetup {
     pub async fn store_stacks_genesis_block(&self, db: &PgStore) {
         let block = model::StacksBlock {
             block_hash: Faker.fake_with_rng(&mut OsRng),
-            block_height: 0.into(),
+            block_height: 0u64.into(),
             parent_hash: StacksBlockId::first_mined().into(),
             bitcoin_anchor: self.sweep_block_hash.into(),
         };
@@ -374,7 +374,7 @@ impl TestSweepSetup {
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
         let block = model::StacksBlock {
             block_hash: self.withdrawal_request.block_hash,
-            block_height: 1.into(), // Sweep setup creates two stacks blocks, and withdrawal request is in the second one.
+            block_height: 1u64.into(), // Sweep setup creates two stacks blocks, and withdrawal request is in the second one.
             parent_hash: Faker.fake_with_rng(&mut OsRng),
             bitcoin_anchor: self.sweep_block_hash.into(),
         };
@@ -409,7 +409,7 @@ impl TestSweepSetup {
             signature_share_threshold: self.signatures_required,
             dkg_shares_status: model::DkgSharesStatus::Verified,
             started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
-            started_at_bitcoin_block_height: 0.into(),
+            started_at_bitcoin_block_height: 0u64.into(),
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }
@@ -798,7 +798,7 @@ impl TestSweepSetup2 {
 
         let genesis_block = model::StacksBlock {
             block_hash: Faker.fake_with_rng(&mut OsRng),
-            block_height: 0.into(),
+            block_height: 0u64.into(),
             parent_hash: StacksBlockId::first_mined().into(),
             bitcoin_anchor: deposit_block_hash.into(),
         };
@@ -1258,7 +1258,7 @@ impl TestSweepSetup2 {
             signature_share_threshold: self.signatures_required,
             dkg_shares_status: DkgSharesStatus::Verified,
             started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
-            started_at_bitcoin_block_height: 0.into(),
+            started_at_bitcoin_block_height: 0u64.into(),
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }

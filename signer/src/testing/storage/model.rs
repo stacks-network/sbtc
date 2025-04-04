@@ -537,7 +537,7 @@ impl BitcoinBlockRef {
     fn hallucinate_parent(block: &model::BitcoinBlock) -> Self {
         Self {
             block_hash: block.parent_hash,
-            block_height: 1337.into(), // Arbitrary number
+            block_height: 1337u64.into(), // Arbitrary number
         }
     }
 }
@@ -559,7 +559,7 @@ impl StacksBlockSummary {
     fn hallucinate_parent(block: &model::StacksBlock) -> Self {
         Self {
             block_hash: block.parent_hash,
-            block_height: 1337.into(), // Arbitrary number
+            block_height: 1337u64.into(), // Arbitrary number
         }
     }
 }
@@ -626,7 +626,10 @@ mod tests {
             .unwrap()
         {
             // Check the stacks heights increment as expected
-            assert_eq!(current.block_height, walk.last().unwrap().block_height - 1);
+            assert_eq!(
+                current.block_height,
+                walk.last().unwrap().block_height - 1u64
+            );
             walk.push(current);
         }
 

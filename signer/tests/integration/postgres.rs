@@ -163,7 +163,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_txid: BitcoinTxId::from([0; 32]),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-    sweep_block_height: 7.into(),
+    sweep_block_height: 7u64.into(),
 }); "complete-deposit standard recipient")]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
@@ -172,7 +172,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_txid: BitcoinTxId::from([0; 32]),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-    sweep_block_height: 7.into(),
+    sweep_block_height: 7u64.into(),
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     id: QualifiedRequestId {
@@ -185,7 +185,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
     signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-    sweep_block_height: 7.into(),
+    sweep_block_height: 7u64.into(),
 }); "accept-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     id: QualifiedRequestId {
@@ -1049,7 +1049,7 @@ async fn writing_transactions_postgres() {
 
     let db_block = model::BitcoinBlock {
         block_hash: block_hash.into(),
-        block_height: 15.into(),
+        block_height: 15u64.into(),
         parent_hash: parent_hash.into(),
     };
 
@@ -2525,7 +2525,7 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         amount: setup_canonical.deposit_request.amount,
         outpoint: setup_canonical.deposit_request.outpoint,
         sweep_block_hash: setup_canonical.deposit_block_hash.into(),
-        sweep_block_height: 42.into(),
+        sweep_block_height: 42u64.into(),
         sweep_txid: setup_canonical.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
@@ -2537,7 +2537,7 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         amount: setup_fork.deposit_request.amount,
         outpoint: setup_fork.deposit_request.outpoint,
         sweep_block_hash: setup_fork.deposit_block_hash.into(),
-        sweep_block_height: 42.into(),
+        sweep_block_height: 42u64.into(),
         sweep_txid: setup_fork.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
@@ -2569,7 +2569,7 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         amount: setup_fork.deposit_request.amount,
         outpoint: setup_fork.deposit_request.outpoint,
         sweep_block_hash: setup_fork.deposit_block_hash.into(),
-        sweep_block_height: 42.into(),
+        sweep_block_height: 42u64.into(),
         sweep_txid: setup_fork.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
@@ -2845,7 +2845,7 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
         amount: setup.deposit_request.amount,
         outpoint: setup.deposit_request.outpoint,
         sweep_block_hash: setup.deposit_block_hash.into(),
-        sweep_block_height: 42.into(),
+        sweep_block_height: 42u64.into(),
         sweep_txid: setup.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
@@ -2955,7 +2955,7 @@ async fn get_swept_deposit_requests_boundary() {
         amount: setup.deposit_request.amount,
         outpoint: setup.deposit_request.outpoint,
         sweep_block_hash: setup.sweep_block_hash.into(),
-        sweep_block_height: 42.into(),
+        sweep_block_height: 42u64.into(),
         sweep_txid: setup.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
@@ -4151,7 +4151,7 @@ async fn withdrawal_report_with_withdrawal_request_swept_but_swept_reorged() {
     let signer_public_keys = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let signer_public_key = &signer_public_keys[0];
     let mut test_data = TestData::generate(&mut rng, &signer_public_keys, &test_params);
-    let mut block_height = 0;
+    let mut block_height = 0u64;
     let mut parent_hash = Faker.fake_with_rng(&mut rng);
     // Our `TestData` generator doesn't quite build us a nice Stacks
     // blockchain. So we manually make sure that we have consecutive blocks
@@ -4176,7 +4176,7 @@ async fn withdrawal_report_with_withdrawal_request_swept_but_swept_reorged() {
 
     // Okay let's put the withdrawal request to some low block height on
     // the chain.
-    assert_eq!(stacks_block.block_height, 1.into());
+    assert_eq!(stacks_block.block_height, 1u64.into());
     let withdrawal_request = WithdrawalRequest {
         block_hash: stacks_block.block_hash,
         bitcoin_block_height: bitcoin_chain_tip_ref.block_height,
@@ -4306,7 +4306,7 @@ async fn withdrawal_report_with_withdrawal_request_swept_but_swept_reorged2() {
     let signer_public_keys = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let signer_public_key = &signer_public_keys[0];
     let mut test_data = TestData::generate(&mut rng, &signer_public_keys, &test_params);
-    let mut block_height = 0;
+    let mut block_height = 0u64;
     let mut parent_hash = Faker.fake_with_rng(&mut rng);
     // Our `TestData` generator doesn't quite build us a nice Stacks
     // blockchain. So we manually make sure that we have consecutive blocks
@@ -4657,45 +4657,45 @@ impl<const N: usize> ReorgDescription<N> {
 /// 5. Get the signers' UTXO and check that the transaction ID matches the
 ///    one expected.
 #[test_case(ReorgDescription {
-    sweep_heights: [0.into(), 3.into(), 4.into(), 5.into()],
-    reorg_height: 4.into(),
-    donation_height: 0.into(),
-    utxo_height: Some(4.into()),
+    sweep_heights: [0u64.into(), 3u64.into(), 4u64.into(), 5u64.into()],
+    reorg_height: 4u64.into(),
+    donation_height: 0u64.into(),
+    utxo_height: Some(4u64.into()),
     num_transactions: std::ops::Range { start: 1, end: 2 },
 }; "vanilla reorg")]
 #[test_case(ReorgDescription {
-    sweep_heights: [0.into(), 3.into(), 4.into(), 5.into()],
-    reorg_height: 2.into(),
-    donation_height: 0.into(),
-    utxo_height: Some(0.into()),
+    sweep_heights: [0u64.into(), 3u64.into(), 4u64.into(), 5u64.into()],
+    reorg_height: 2u64.into(),
+    donation_height: 0u64.into(),
+    utxo_height: Some(0u64.into()),
     num_transactions: std::ops::Range { start: 1, end: 2 },
 }; "near-complete-reorg")]
 #[test_case(ReorgDescription {
-    sweep_heights: [0.into(), 6.into(), 10.into(), 12.into()],
-    reorg_height: 7.into(),
-    donation_height: 0.into(),
-    utxo_height: Some(6.into()),
+    sweep_heights: [0u64.into(), 6u64.into(), 10u64.into(), 12u64.into()],
+    reorg_height: 7u64.into(),
+    donation_height: 0u64.into(),
+    utxo_height: Some(6u64.into()),
     num_transactions: std::ops::Range { start: 1, end: 2 },
 }; "partial-reorg")]
 #[test_case(ReorgDescription {
-    sweep_heights: [0.into(), 6.into(), 20.into(), 21.into()],
-    reorg_height: 19.into(),
-    donation_height: 0.into(),
-    utxo_height: Some(6.into()),
+    sweep_heights: [0u64.into(), 6u64.into(), 20u64.into(), 21u64.into()],
+    reorg_height: 19u64.into(),
+    donation_height: 0u64.into(),
+    utxo_height: Some(6u64.into()),
     num_transactions: std::ops::Range { start: 1, end: 2 },
 }; "long-gap-reorg")]
 #[test_case(ReorgDescription {
-    sweep_heights: [3.into(), 4.into(), 5.into()],
-    reorg_height: 2.into(),
-    donation_height: 3.into(),
+    sweep_heights: [3u64.into(), 4u64.into(), 5u64.into()],
+    reorg_height: 2u64.into(),
+    donation_height: 3u64.into(),
     utxo_height: None,
     num_transactions: std::ops::Range { start: 1, end: 2 },
 }; "complete-reorg")]
 #[test_case(ReorgDescription {
-    sweep_heights: [1.into(), 7.into(), 17.into(), 18.into(), 19.into(), 20.into(), 21.into()],
-    reorg_height: 16.into(),
-    donation_height: 0.into(),
-    utxo_height: Some(7.into()),
+    sweep_heights: [1u64.into(), 7u64.into(), 17u64.into(), 18u64.into(), 19u64.into(), 20u64.into(), 21u64.into()],
+    reorg_height: 16u64.into(),
+    donation_height: 0u64.into(),
+    utxo_height: Some(7u64.into()),
     num_transactions: std::ops::Range { start: 25, end: 26 },
 }; "busy-bridge-with-reorg")]
 #[tokio::test]
@@ -5181,7 +5181,7 @@ async fn pending_rejected_withdrawal_no_events() {
 
     // Append some blocks to ensure we have expired requests; we expire the
     // requests in the first 5 canonical blocks, while keeping the others valid.
-    for _ in *chain_depth..WITHDRAWAL_BLOCKS_EXPIRY + 5 {
+    for _ in chain_depth..WITHDRAWAL_BLOCKS_EXPIRY + 5 {
         let new_block = BitcoinBlock {
             block_hash: fake::Faker.fake_with_rng(&mut rng),
             block_height: bitcoin_chain_tip.block_height + 1,
@@ -6228,7 +6228,12 @@ mod get_pending_accepted_withdrawal_requests {
         let db = signer::testing::storage::new_test_database().await;
 
         let requests = db
-            .get_pending_accepted_withdrawal_requests(&Faker.fake(), &Faker.fake(), 1_000.into(), 0)
+            .get_pending_accepted_withdrawal_requests(
+                &Faker.fake(),
+                &Faker.fake(),
+                1_000u64.into(),
+                0,
+            )
             .await
             .expect("failed to query db");
         assert!(requests.is_empty());
@@ -6286,15 +6291,15 @@ mod get_pending_accepted_withdrawal_requests {
 
         // NOTE: The bitcoin block heights are 0-indexed, so these have a height
         // of `1`.
-        assert_eq!(bitcoin_2.block_height, 1.into());
-        assert_eq!(stacks_2.block_height, 1.into());
+        assert_eq!(bitcoin_2.block_height, 1u64.into());
+        assert_eq!(stacks_2.block_height, 1u64.into());
 
         // Min bitcoin height = 0, we should get the request.
         let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                0.into(),
+                0u64.into(),
                 signature_threshold,
             )
             .await
@@ -6306,7 +6311,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                1.into(),
+                1u64.into(),
                 signature_threshold,
             )
             .await
@@ -6318,7 +6323,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                2.into(),
+                2u64.into(),
                 signature_threshold,
             )
             .await
@@ -6345,7 +6350,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = signer::testing::storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_block = BitcoinBlock::new_genesis();
@@ -6414,7 +6419,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -6489,7 +6494,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -6571,7 +6576,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = signer::testing::storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_block = BitcoinBlock::new_genesis();
@@ -6627,7 +6632,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = signer::testing::storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_block = BitcoinBlock::new_genesis();
@@ -6693,7 +6698,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -6775,7 +6780,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_block_1 = BitcoinBlock::new_genesis();
@@ -6848,7 +6853,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -6931,7 +6936,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -7006,7 +7011,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let min_block_height = 0;
+        let min_block_height = 0u64;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -7112,7 +7117,7 @@ mod get_pending_accepted_withdrawal_requests {
         let request = WithdrawalRequest {
             request_id: 1,
             block_hash: stacks_2.block_hash, // Anchored to B2 with height of 1.
-            bitcoin_block_height: 2.into(),
+            bitcoin_block_height: 2u64.into(),
             ..Faker.fake()
         };
 
@@ -7128,7 +7133,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                0.into(),
+                0u64.into(),
                 signature_threshold,
             )
             .await
@@ -7142,7 +7147,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                1.into(),
+                1u64.into(),
                 signature_threshold,
             )
             .await
@@ -7156,7 +7161,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                2.into(),
+                2u64.into(),
                 signature_threshold,
             )
             .await
@@ -7170,7 +7175,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                3.into(),
+                3u64.into(),
                 signature_threshold,
             )
             .await
@@ -7232,7 +7237,7 @@ mod get_pending_accepted_withdrawal_requests {
         let request = WithdrawalRequest {
             request_id: 1,
             block_hash: stacks_2.block_hash, // Anchored to B2 with height of 1.
-            bitcoin_block_height: 0.into(),
+            bitcoin_block_height: 0u64.into(),
             ..Faker.fake()
         };
 
@@ -7247,7 +7252,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                0.into(),
+                0u64.into(),
                 signature_threshold,
             )
             .await
@@ -7261,7 +7266,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                1.into(),
+                1u64.into(),
                 signature_threshold,
             )
             .await
@@ -7275,7 +7280,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                2.into(),
+                2u64.into(),
                 signature_threshold,
             )
             .await

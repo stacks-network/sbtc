@@ -1096,7 +1096,7 @@ mod tests {
             signature_share_threshold: 1,
             dkg_shares_status: DkgSharesStatus::Unverified,
             started_at_bitcoin_block_hash: block_hash.into(),
-            started_at_bitcoin_block_height: 1.into(),
+            started_at_bitcoin_block_height: 1u64.into(),
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 

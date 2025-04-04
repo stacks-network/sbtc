@@ -1349,141 +1349,223 @@ pub struct WithdrawalRejectEvent {
     pub signer_bitmap: BitArray<[u8; 16]>,
 }
 
-/// Helper for [`implement_trait!`] macro. Implements arithmetic traits for integer wrapper types.
-#[macro_export]
-macro_rules! implement_trait {
-    ($type:ident, $inner:ty, $int:ty, $trait:ident, $method:ident) => {
-        impl $trait<$int> for $type {
-            type Output = $type;
-            fn $method(self, other: $int) -> Self::Output {
-                Self(self.0.$method(other as $inner))
-            }
-        }
-        impl $trait<$type> for $int {
-            type Output = $type;
-            fn $method(self, other: $type) -> Self::Output {
-                $type((self as $inner).$method(other.0))
-            }
-        }
-        impl $trait for $type {
-            type Output = $type;
-            fn $method(self, other: $type) -> Self::Output {
-                Self(self.0.$method(other.0))
-            }
-        }
-    };
+impl From<u8> for BitcoinBlockHeight {
+    fn from(value: u8) -> Self {
+        Self(value as u64)
+    }
+}
+impl From<u16> for BitcoinBlockHeight {
+    fn from(value: u16) -> Self {
+        Self(value as u64)
+    }
+}
+impl From<u32> for BitcoinBlockHeight {
+    fn from(value: u32) -> Self {
+        Self(value as u64)
+    }
+}
+impl From<u64> for BitcoinBlockHeight {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+impl From<usize> for BitcoinBlockHeight {
+    fn from(value: usize) -> Self {
+        Self(value as u64)
+    }
 }
 
-/// Helper for [`implement_int!`] macro. Implements conversion from integer types to int wrapper types.
-#[macro_export]
-macro_rules! implement_from {
-    ($type:ident, $inner:ty, $($int:ty),*) => {
-        $(impl From<$int> for $type {
-            fn from(value: $int) -> Self {
-                Self(value as $inner)
-            }
-        })*
-    };
+// Conversion u64 => StacksBlockHeight is not implemented intentionally.
+// Use deref instead.
+
+impl From<BitcoinBlockHeight> for u128 {
+    fn from(value: BitcoinBlockHeight) -> Self {
+        *value as u128
+    }
 }
 
-/// Helper for [`implement_int!`] macro. Implements conversion from wrapper types to int types.
-#[macro_export]
-macro_rules! implement_back_from {
-    ($type:ident, $inner:ty, $($int:ty),*) => {
-        $(impl From<$type> for $int {
-            fn from(value: $type) -> Self {
-                *value as $int
-            }
-        })*
-    };
+impl std::fmt::Display for BitcoinBlockHeight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl Deref for BitcoinBlockHeight {
+    type Target = u64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl TryFrom<BitcoinBlockHeight> for i64 {
+    type Error = TryFromIntError;
+    fn try_from(value: BitcoinBlockHeight) -> Result<Self, Self::Error> {
+        i64::try_from(value.0)
+    }
 }
 
-/// Helper for [`implement_int!`] macro. Implements special arithmetic methods for integer wrapper types.
-#[macro_export]
-macro_rules! implement_special_methods {
-    ($type:ident, $inner:ty) => {
-        impl $type {
-            /// Implementation of saturating_add for int wrapper type `[$type]`. Behaves same way as inner type.
-            pub fn saturating_add(self, rhs: impl Into<$type>) -> Self {
-                let rhs: $inner = rhs.into().0;
-                Self(self.0.saturating_add(rhs))
-            }
-            /// Implementation of saturating_sub for int wrapper type `[$type]`. Behaves same way as inner type.
-            pub fn saturating_sub(self, rhs: impl Into<$type>) -> Self {
-                let rhs: $inner = rhs.into().0;
-                Self(self.0.saturating_sub(rhs))
-            }
-            /// Implementation of wrapping_add for int wrapper type `[$type]`. Behaves same way as inner type.
-            pub fn wrapping_add(self, rhs: impl Into<$type>) -> Self {
-                let rhs: $inner = rhs.into().0;
-                Self(self.0.wrapping_add(rhs))
-            }
-            /// Implementation of wrapping_sub for int wrapper type `[$type]`. Behaves same way as inner type.
-            pub fn wrapping_sub(self, rhs: impl Into<$type>) -> Self {
-                let rhs: $inner = rhs.into().0;
-                Self(self.0.wrapping_sub(rhs))
-            }
-            /// Implementation of checked_add for int wrapper type `[$type]`. Behaves same way as inner type.
-            pub fn checked_add(self, rhs: impl Into<$type>) -> Option<Self> {
-                let rhs: $inner = rhs.into().0;
-                self.0.checked_add(rhs).map(Self)
-            }
-            /// Implementation of checked_sub for int wrapper type `[$type]`. Behaves same way as inner type.
-            pub fn checked_sub(self, rhs: impl Into<$type>) -> Option<Self> {
-                let rhs: $inner = rhs.into().0;
-                self.0.checked_sub(rhs).map(Self)
-            }
-            /// Implementation of overflowing_add for int wrapper type `[$type]`. Behaves same way as inner type.
-            pub fn overflowing_add(self, rhs: impl Into<$type>) -> (Self, bool) {
-                let rhs: $inner = rhs.into().0;
-                let (val, overflow) = self.0.overflowing_add(rhs);
-                (Self(val), overflow)
-            }
-            /// Implementation of overflowing_sub for int wrapper type `[$type]`. Behaves same way as inner type.
-            pub fn overflowing_sub(self, rhs: impl Into<$type>) -> (Self, bool) {
-                let rhs: $inner = rhs.into().0;
-                let (val, overflow) = self.0.overflowing_sub(rhs);
-                (Self(val), overflow)
-            }
-        }
-    };
+impl TryFrom<i64> for BitcoinBlockHeight {
+    type Error = TryFromIntError;
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        Ok(Self(<u64>::try_from(value)?))
+    }
 }
 
-/// Implements various traits and functions for integer wrapper types.
-/// Most of this impls are arithmetics and conversions.
-macro_rules! implement_int {
-    ($type:ident, $inner:ty) => {
-        $crate::implement_from!($type, $inner, u8, u16, u32, u64, usize, i32);
-        $crate::implement_back_from!($type, $inner, u64, u128);
+impl Add<u64> for BitcoinBlockHeight {
+    type Output = BitcoinBlockHeight;
+    fn add(self, other: u64) -> Self::Output {
+        Self(self.0.add(other))
+    }
+}
+impl Add<BitcoinBlockHeight> for u64 {
+    type Output = BitcoinBlockHeight;
+    fn add(self, other: BitcoinBlockHeight) -> Self::Output {
+        BitcoinBlockHeight((self).add(other.0))
+    }
+}
+impl Add for BitcoinBlockHeight {
+    type Output = BitcoinBlockHeight;
+    fn add(self, other: BitcoinBlockHeight) -> Self::Output {
+        Self(self.0.add(other.0))
+    }
+}
 
-        impl std::fmt::Display for $type {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.0)
-            }
-        }
-        impl Deref for $type {
-            type Target = $inner;
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-        impl TryFrom<$type> for i64 {
-            type Error = TryFromIntError;
-            fn try_from(value: $type) -> Result<Self, Self::Error> {
-                i64::try_from(value.0)
-            }
-        }
+// I don't see any case where int - height can make sense.
 
-        impl TryFrom<i64> for $type {
-            type Error = TryFromIntError;
-            fn try_from(value: i64) -> Result<Self, Self::Error> {
-                Ok(Self(<$inner>::try_from(value)?))
-            }
-        }
-        implement_trait!($type, $inner, $inner, Add, add);
-        implement_trait!($type, $inner, $inner, Sub, sub);
-        implement_special_methods!($type, $inner);
-    };
+impl Sub<u64> for BitcoinBlockHeight {
+    // Height - int is still height.
+    type Output = BitcoinBlockHeight;
+    fn sub(self, other: u64) -> Self::Output {
+        BitcoinBlockHeight((*self).sub(other))
+    }
+}
+impl Sub for BitcoinBlockHeight {
+    // Diff of two heights is int, not height.
+    type Output = u64;
+    fn sub(self, other: BitcoinBlockHeight) -> Self::Output {
+        self.0.sub(other.0)
+    }
+}
+
+impl BitcoinBlockHeight {
+    /// Behaves same as u64.saturating_add
+    pub fn saturating_add(self, rhs: impl Into<BitcoinBlockHeight>) -> Self {
+        let rhs: u64 = rhs.into().0;
+        Self(self.0.saturating_add(rhs))
+    }
+
+    /// Behaves same as u64.saturating_sub
+    pub fn saturating_sub(self, rhs: impl Into<BitcoinBlockHeight>) -> Self {
+        let rhs: u64 = rhs.into().0;
+        Self(self.0.saturating_sub(rhs))
+    }
+}
+
+impl From<u8> for StacksBlockHeight {
+    fn from(value: u8) -> Self {
+        Self(value as u64)
+    }
+}
+impl From<u16> for StacksBlockHeight {
+    fn from(value: u16) -> Self {
+        Self(value as u64)
+    }
+}
+impl From<u32> for StacksBlockHeight {
+    fn from(value: u32) -> Self {
+        Self(value as u64)
+    }
+}
+impl From<u64> for StacksBlockHeight {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+impl From<usize> for StacksBlockHeight {
+    fn from(value: usize) -> Self {
+        Self(value as u64)
+    }
+}
+
+// Conversion u64 => StacksBlockHeight is not implemented intentionally.
+// Use deref instead.
+
+impl From<StacksBlockHeight> for u128 {
+    fn from(value: StacksBlockHeight) -> Self {
+        *value as u128
+    }
+}
+
+impl std::fmt::Display for StacksBlockHeight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl Deref for StacksBlockHeight {
+    type Target = u64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl TryFrom<StacksBlockHeight> for i64 {
+    type Error = TryFromIntError;
+    fn try_from(value: StacksBlockHeight) -> Result<Self, Self::Error> {
+        i64::try_from(value.0)
+    }
+}
+
+impl TryFrom<i64> for StacksBlockHeight {
+    type Error = TryFromIntError;
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        Ok(Self(<u64>::try_from(value)?))
+    }
+}
+
+impl Add<u64> for StacksBlockHeight {
+    type Output = StacksBlockHeight;
+    fn add(self, other: u64) -> Self::Output {
+        Self(self.0.add(other))
+    }
+}
+impl Add<StacksBlockHeight> for u64 {
+    type Output = StacksBlockHeight;
+    fn add(self, other: StacksBlockHeight) -> Self::Output {
+        StacksBlockHeight((self).add(other.0))
+    }
+}
+impl Add for StacksBlockHeight {
+    type Output = StacksBlockHeight;
+    fn add(self, other: StacksBlockHeight) -> Self::Output {
+        Self(self.0.add(other.0))
+    }
+}
+
+// I don't see any case where int - height can make sense.
+
+impl Sub<u64> for StacksBlockHeight {
+    // Height - int is still height.
+    type Output = StacksBlockHeight;
+    fn sub(self, other: u64) -> Self::Output {
+        StacksBlockHeight((*self).sub(other))
+    }
+}
+impl Sub for StacksBlockHeight {
+    // Diff of two heights is int, not height.
+    type Output = u64;
+    fn sub(self, other: StacksBlockHeight) -> Self::Output {
+        self.0.sub(other.0)
+    }
+}
+impl StacksBlockHeight {
+    /// Behaves same as u64.saturating_add
+    pub fn saturating_add(self, rhs: impl Into<StacksBlockHeight>) -> Self {
+        let rhs: u64 = rhs.into().0;
+        Self(self.0.saturating_add(rhs))
+    }
+
+    /// Behaves same as u64.saturating_sub
+    pub fn saturating_sub(self, rhs: impl Into<StacksBlockHeight>) -> Self {
+        let rhs: u64 = rhs.into().0;
+        Self(self.0.saturating_sub(rhs))
+    }
 }
 
 /// Bitcoin block height
@@ -1520,9 +1602,6 @@ pub struct BitcoinBlockHeight(u64);
 )]
 #[sqlx(transparent)]
 pub struct StacksBlockHeight(u64);
-
-implement_int!(BitcoinBlockHeight, u64);
-implement_int!(StacksBlockHeight, u64);
 
 #[cfg(test)]
 mod tests {

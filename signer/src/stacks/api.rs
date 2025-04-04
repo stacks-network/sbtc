@@ -2304,7 +2304,7 @@ mod tests {
 
         let nakamoto_start_height = resp.nakamoto_start_height();
         assert!(nakamoto_start_height.is_some());
-        assert_eq!(nakamoto_start_height.unwrap(), 232.into());
+        assert_eq!(nakamoto_start_height.unwrap(), 232u64.into());
     }
 
     #[tokio::test]

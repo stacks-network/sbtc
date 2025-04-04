@@ -81,7 +81,7 @@ impl BitcoinChain {
 
     /// Gets the nth block in the chain, if it exists.
     pub fn nth_block_checked(&self, height: BitcoinBlockHeight) -> Option<&BitcoinBlock> {
-        self.0.get(u64::from(height) as usize)
+        self.0.get(*height as usize)
     }
 
     /// Gets the nth block in the chain, panicking if it does not exist.
@@ -99,7 +99,7 @@ impl BitcoinBlock {
     pub fn new_genesis() -> Self {
         Self {
             block_hash: Faker.fake(),
-            block_height: 0.into(),
+            block_height: 0u64.into(),
             parent_hash: BitcoinBlockHash::from([0; 32]),
         }
     }
@@ -172,13 +172,13 @@ impl StacksChain {
 
     /// Gets the nth block in the chain, if it exists.
     pub fn nth_block_checked(&self, height: StacksBlockHeight) -> Option<&StacksBlock> {
-        self.0.get(u64::from(height) as usize)
+        self.0.get(*height as usize)
     }
 
     /// Gets the nth block in the chain, panicking if it does not exist.
     pub fn nth_block(&self, height: StacksBlockHeight) -> &StacksBlock {
         self.0
-            .get(u64::from(height) as usize)
+            .get(*height as usize)
             .expect("no nth bitcoin block (index out of range)")
     }
 }
@@ -191,7 +191,7 @@ impl StacksBlock {
     pub fn new_genesis() -> Self {
         Self {
             block_hash: Faker.fake(),
-            block_height: 0.into(),
+            block_height: 0u64.into(),
             parent_hash: StacksBlockHash::from([0; 32]),
             bitcoin_anchor: BitcoinBlockHash::from([0; 32]),
         }

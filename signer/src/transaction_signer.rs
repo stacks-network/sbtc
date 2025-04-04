@@ -1770,13 +1770,13 @@ mod tests {
         // Dummy chain tip hash which will be used to fetch the block height.
         let bitcoin_chain_tip = model::BitcoinBlockRef {
             block_hash: Faker.fake(),
-            block_height: 100.into(),
+            block_height: 100u64.into(),
         };
 
         // Write a bitcoin block at the given height, simulating the chain tip.
         storage
             .write_bitcoin_block(&model::BitcoinBlock {
-                block_height: 100.into(),
+                block_height: 100u64.into(),
                 parent_hash: Faker.fake(),
                 block_hash: bitcoin_chain_tip.block_hash,
             })
@@ -1843,7 +1843,7 @@ mod tests {
         // Write a bitcoin block at the given height, simulating the chain tip.
         storage
             .write_bitcoin_block(&model::BitcoinBlock {
-                block_height: 100.into(),
+                block_height: 100u64.into(),
                 parent_hash: Faker.fake(),
                 block_hash: bitcoin_chain_tip,
             })
@@ -1928,7 +1928,7 @@ mod tests {
         // Write a bitcoin block at the given height, simulating the chain tip.
         storage
             .write_bitcoin_block(&model::BitcoinBlock {
-                block_height: 100.into(),
+                block_height: 100u64.into(),
                 parent_hash: Faker.fake(),
                 block_hash: bitcoin_chain_tip,
             })

@@ -1578,7 +1578,7 @@ mod tests {
             deployer: StacksAddress::burn_address(false),
             sweep_txid: BitcoinTxId::from([0; 32]),
             sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-            sweep_block_height: 7.into(),
+            sweep_block_height: 7u64.into(),
         };
 
         let _ = call.as_contract_call();
@@ -1599,7 +1599,7 @@ mod tests {
             signer_bitmap: 0,
             deployer: StacksAddress::burn_address(false),
             sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-            sweep_block_height: 7.into(),
+            sweep_block_height: 7u64.into(),
         };
 
         let _ = call.as_contract_call();

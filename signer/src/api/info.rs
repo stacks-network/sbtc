@@ -652,10 +652,11 @@ mod tests {
                 settings.signer.signer_round_max_duration = Duration::from_secs(2);
                 settings.signer.bitcoin_presign_request_max_duration = Duration::from_secs(3);
                 settings.signer.dkg_max_duration = Duration::from_secs(4);
-                settings.signer.sbtc_bitcoin_start_height = Some(BitcoinBlockHeight::from(101));
+                settings.signer.sbtc_bitcoin_start_height = Some(BitcoinBlockHeight::from(101u64));
                 settings.signer.dkg_begin_pause = Some(5);
                 settings.signer.max_deposits_per_bitcoin_tx = NonZeroU16::new(6).unwrap();
-                settings.signer.dkg_min_bitcoin_block_height = Some(BitcoinBlockHeight::from(102));
+                settings.signer.dkg_min_bitcoin_block_height =
+                    Some(BitcoinBlockHeight::from(102u64));
                 settings.signer.dkg_target_rounds = NonZeroU32::new(7).unwrap();
             })
             .build();

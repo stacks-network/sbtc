@@ -152,7 +152,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_txid: BitcoinTxId::from([0; 32]),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-    sweep_block_height: 7.into(),
+    sweep_block_height: 7u64.into(),
 }); "complete-deposit standard recipient")]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
@@ -161,7 +161,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_txid: BitcoinTxId::from([0; 32]),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-    sweep_block_height: 7.into(),
+    sweep_block_height: 7u64.into(),
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     id: QualifiedRequestId {
@@ -174,7 +174,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-    sweep_block_height: 7.into(),
+    sweep_block_height: 7u64.into(),
 }); "accept-withdrawal")]
 #[test_case(ContractCallWrapper(InitiateWithdrawalRequest {
     amount: 22500,
@@ -261,7 +261,7 @@ async fn estimate_tx_fees() {
         deployer: StacksAddress::burn_address(false),
         sweep_txid: BitcoinTxId::from([0; 32]),
         sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-        sweep_block_height: 7.into(),
+        sweep_block_height: 7u64.into(),
     };
     let payload = ContractCallWrapper(contract_call);
 

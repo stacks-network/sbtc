@@ -589,7 +589,7 @@ where
                         Ok(AccountInfo {
                             balance: 1_000_000,
                             locked: 0,
-                            unlock_height: 0.into(),
+                            unlock_height: 0u64.into(),
                             nonce: 1,
                         })
                     })
@@ -715,7 +715,7 @@ where
             block_hash: stacks_block.block_hash,
             sweep_txid: sweep_tx_info.txid.into(),
             sweep_block_hash: sweep_block_hash.into(),
-            sweep_block_height: 0.into(),
+            sweep_block_height: 0u64.into(),
             ..fake::Faker.fake_with_rng(&mut rng)
         };
 
@@ -803,7 +803,7 @@ where
                     Value::Sequence(SequenceData::Buffer(BuffData {
                         data: withdrawal_req.sweep_block_hash.to_le_bytes().to_vec()
                     })),
-                    Value::UInt(u64::from(withdrawal_req.sweep_block_height) as u128),
+                    Value::UInt(*withdrawal_req.sweep_block_height as u128),
                     Value::Sequence(SequenceData::Buffer(BuffData {
                         data: outpoint.txid.to_le_bytes().to_vec()
                     })),

@@ -313,10 +313,7 @@ where
             "bitcoin_tip_hash",
             tracing::field::display(bitcoin_chain_tip.block_hash),
         );
-        span.record(
-            "bitcoin_tip_height",
-            u64::from(bitcoin_chain_tip.block_height),
-        );
+        span.record("bitcoin_tip_height", *bitcoin_chain_tip.block_height);
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
@@ -606,10 +603,7 @@ where
 
         let span = tracing::Span::current();
         span.record("stacks_tip_hash", stacks_chain_tip.block_hash.to_hex());
-        span.record(
-            "stacks_tip_height",
-            u64::from(stacks_chain_tip.block_height),
-        );
+        span.record("stacks_tip_height", *stacks_chain_tip.block_height);
 
         // Create a future that fetches pending deposit and withdrawal requests
         // from the database.
@@ -2007,11 +2001,10 @@ where
             // Calculate the number of blocks passed (confirmations) since the
             // bitcoin anchor of the stacks block confirming the withdrawal
             // request.
-            let num_confirmations: u64 = params
+            let num_confirmations: u64 = *params
                 .bitcoin_chain_tip
                 .block_height
-                .saturating_sub(req.bitcoin_block_height)
-                .into();
+                .saturating_sub(req.bitcoin_block_height);
 
             // [3] Ensure that we have the required number of confirmations for
             // the withdrawal request.

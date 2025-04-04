@@ -634,7 +634,10 @@ mod tests {
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
-        assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101.into()));
+        assert_eq!(
+            settings.signer.sbtc_bitcoin_start_height,
+            Some(101u64.into())
+        );
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
         assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
@@ -800,7 +803,7 @@ mod tests {
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(
             settings.signer.dkg_min_bitcoin_block_height,
-            Some(42.into())
+            Some(42u64.into())
         );
     }
 
@@ -865,7 +868,7 @@ mod tests {
         let settings = Settings::new_from_default_config().unwrap();
         let height = settings.signer.sbtc_bitcoin_start_height.unwrap();
 
-        assert_eq!(height, 12345.into());
+        assert_eq!(height, 12345u64.into());
     }
 
     #[test]
