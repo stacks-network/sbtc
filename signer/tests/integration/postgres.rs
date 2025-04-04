@@ -23,8 +23,8 @@ use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::SweptWithdrawalRequest;
 use signer::storage::model::WithdrawalRequest;
-use signer::testing::storage::DbReadTestExt;
 use signer::testing::IterTestExt as _;
+use signer::testing::storage::DbReadTestExt;
 use time::OffsetDateTime;
 
 use signer::bitcoin::MockBitcoinInteract;
