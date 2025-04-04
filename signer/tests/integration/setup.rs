@@ -5,7 +5,6 @@ use std::ops::Deref;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::RpcApi as _;

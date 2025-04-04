@@ -13,7 +13,6 @@ use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Transaction;
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;

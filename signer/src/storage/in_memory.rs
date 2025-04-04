@@ -1,7 +1,6 @@
 //! In-memory store implementation - useful for tests
 
 use bitcoin::OutPoint;
-use bitcoin::consensus::Decodable as _;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
