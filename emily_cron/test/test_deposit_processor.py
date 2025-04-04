@@ -603,8 +603,9 @@ class TestDepositProcessor(unittest.TestCase):
             "tx3": None,  # TX not found
             "tx4": {
                 "fee": 10000,
-                "status": {"block_height": 930, "block_time": self.current_time - 900}},  # Minimal data for deposit4
-            "tx5": {"fee": 10000, "status": {"confirmed": False}}  # In-flight
+                "status": {"block_height": 930, "block_time": self.current_time - 900},
+            },  # Minimal data for deposit4
+            "tx5": {"fee": 10000, "status": {"confirmed": False}},  # In-flight
         }.get(txid)
 
         # Run the _enrich_deposits method
