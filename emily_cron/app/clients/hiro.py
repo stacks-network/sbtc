@@ -26,16 +26,14 @@ class HiroAPI(APIClient):
             bool: True if the deposit was completed, False otherwise
         """
         # Convert vout to hex without 0x prefix
-        vout_hex = format(vout, "x")
-        # Calculate padding to ensure fixed length (36 chars total)
+        # Add padding to ensure fixed length (36 chars total)
         # 36 = 2 (0x) + 2 (01) + padding + len(vout_hex)
-        padding = 32 - len(vout_hex)
-
+        vout_hex = format(vout, "x").zfill(32)
         params = {
             "sender": settings.DEPLOYER_ADDRESS,
             "arguments": [
                 f"0x0200000020{txid}",
-                f"0x01{'0' * padding}{vout_hex}",
+                f"0x01{vout_hex}",
             ],
         }
         result: dict[str, Any] = cls.post(
