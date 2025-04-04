@@ -475,8 +475,7 @@ impl PgStore {
         .map_err(Error::SqlxQuery)
         .map(|height| {
             height.map(|height| {
-                BitcoinBlockHeight::try_from(height)
-                    .map_err(Error::ConversionDatabaseInt)
+                BitcoinBlockHeight::try_from(height).map_err(Error::ConversionDatabaseInt)
             })
         })
         .map(|opt| opt.transpose())
@@ -507,8 +506,7 @@ impl PgStore {
         .map_err(Error::SqlxQuery)
         .map(|height| {
             height.map(|height| {
-                BitcoinBlockHeight::try_from(height)
-                    .map_err(Error::ConversionDatabaseInt)
+                BitcoinBlockHeight::try_from(height).map_err(Error::ConversionDatabaseInt)
             })
         })
         .map(|opt| opt.transpose())
@@ -601,7 +599,7 @@ impl PgStore {
         // Given the utxo candidate above, this is our best guess of the
         // minimum UTXO height. It might be wrong, we'll find out shortly.
         let min_block_height_candidate = BitcoinBlockHeight::try_from(utxo_candidate.block_height)
-            .map_err( Error::ConversionDatabaseInt)?
+            .map_err(Error::ConversionDatabaseInt)?
             .saturating_sub(MAX_REORG_BLOCK_COUNT);
 
         // We want to go back at least MAX_REORG_BLOCK_COUNT blocks worth
@@ -672,9 +670,7 @@ impl PgStore {
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)?
-        .map(|height| {
-            BitcoinBlockHeight::try_from(height).map_err( Error::ConversionDatabaseInt)
-        })
+        .map(|height| BitcoinBlockHeight::try_from(height).map_err(Error::ConversionDatabaseInt))
         .transpose()?;
 
         // We need to go back at least MAX_REORG_BLOCK_COUNT blocks before
