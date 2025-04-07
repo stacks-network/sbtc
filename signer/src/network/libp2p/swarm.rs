@@ -41,7 +41,7 @@ const MAX_SUBSTREAMS_PER_CONNECTION: usize = 20;
 /// for most use cases. If a connection cannot be established within this time,
 /// the connection will be closed and the dialing peer will be notified. This
 /// timeout is applied to both inbound and outbound connections.
-const NEGOTIATION_TIMEOUT_SECS: u64 = 5;
+const NEGOTIATION_TIMEOUT_SECS: u64 = 10;
 
 /// Define the behaviors of the [`SignerSwarm`] libp2p network.
 #[derive(NetworkBehaviour)]
