@@ -7,9 +7,13 @@ on:
         description: "Tag Name (e.g., v1.0.0)"
         required: true
       release:
+        type: choice
         description: "Trigger Release? (yes/no)"
         required: true
         default: "no"
+        options:
+        - No
+        - Yes
 
 permissions:
   contents: write # Needed to create a tag
