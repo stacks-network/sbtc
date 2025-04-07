@@ -18,13 +18,14 @@ use super::entries::deposit::{
     ValidatedDepositUpdate,
 };
 use super::entries::limits::{
-    LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
+    GLOBAL_CAP_ACCOUNT, LimitEntry, LimitEntryKey, LimitTablePrimaryIndex,
 };
 use super::entries::withdrawal::{
     ValidatedWithdrawalUpdate, WithdrawalInfoByRecipientEntry, WithdrawalInfoBySenderEntry,
     WithdrawalTableByRecipientSecondaryIndex, WithdrawalTableBySenderSecondaryIndex,
 };
 use super::entries::{
+    EntryTrait, KeyTrait, TableIndexTrait, VersionedEntryTrait, VersionedTableIndexTrait,
     chainstate::{
         ApiStateEntry, ApiStatus, ChainstateByBitcoinHeightTableSecondaryIndex, ChainstateEntry,
         ChainstateTablePrimaryIndex, SpecialApiStateIndex,
@@ -37,7 +38,6 @@ use super::entries::{
         WithdrawalEntry, WithdrawalInfoEntry, WithdrawalTablePrimaryIndex,
         WithdrawalTableSecondaryIndex, WithdrawalUpdatePackage,
     },
-    EntryTrait, KeyTrait, TableIndexTrait, VersionedEntryTrait, VersionedTableIndexTrait,
 };
 
 // TODO: have different Table structs for each of the table types instead of
@@ -543,7 +543,9 @@ pub async fn add_chainstate_entry(
     debug!("Adding chainstate entry, current api state: {api_state:?}");
     if let ApiStatus::Reorg(reorg_chaintip) = &api_state.api_status {
         if reorg_chaintip.key != entry.key {
-            warn!("Attempting to update chainstate during a reorg [ new entry {entry:?} | reorg chaintip {reorg_chaintip:?} ]");
+            warn!(
+                "Attempting to update chainstate during a reorg [ new entry {entry:?} | reorg chaintip {reorg_chaintip:?} ]"
+            );
             return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
                 "Attempting to update chainstate during a reorg.".to_string(),
             )));
@@ -612,9 +614,7 @@ pub async fn add_chainstate_entry(
     } else if blocks_higher_than_current_tip > 1 {
         warn!(
             "Attempting to add a chaintip that is more than one block ({}) higher than the current tip. {:?} -> {:?}",
-            blocks_higher_than_current_tip,
-            chaintip,
-            entry,
+            blocks_higher_than_current_tip, chaintip, entry,
         );
         // TODO(TBD): Determine the ramifications of allowing a chaintip to be added much
         // higher than expected.
