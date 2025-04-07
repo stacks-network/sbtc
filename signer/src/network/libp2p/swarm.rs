@@ -330,8 +330,11 @@ impl<'a> SignerSwarmBuilder<'a> {
         let yamux = yamux::Config::default();
         let tcp_config = tcp::Config::default().nodelay(true);
 
-        // This is hard-coded to a non-zero u8 value and will never fail.
-        #[allow(clippy::unwrap_in_result)]
+        // Set the dial concurrency factor to limit the number of concurrent dialing
+        // attempts. The default is 8, but we conservatively set it to 4, allowing
+        // a signer to simultaneously attempt to connect to enough peers to become
+        // well-connected while also reducing the impact of any potential connection
+        // amplification attacks.
         let dial_concurrency_factor = NonZeroU8::new(4)
             .ok_or_else(|| SignerSwarmError::Generic("failed to create dial concurrency factor"))?;
 
