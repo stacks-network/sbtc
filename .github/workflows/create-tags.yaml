@@ -12,8 +12,8 @@ on:
         required: true
         default: no
         options:
-        - no
-        - yes
+         - no
+         - yes
 
 permissions:
   contents: write # Needed to create a tag
