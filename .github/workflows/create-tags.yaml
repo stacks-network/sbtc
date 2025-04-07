@@ -48,14 +48,11 @@ jobs:
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
           script: |
-            const ref = '${{ github.event.ref }}';
-            const tagName = '${{ inputs.tag_name }}';
-
             const response = await github.rest.repos.createDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
               event_type: 'image_build_and_draft_release',
               client_payload: {
-                tag_name: 'tagName'
+                tag_name: '${{ inputs.tag_name }}'
               }
             });
