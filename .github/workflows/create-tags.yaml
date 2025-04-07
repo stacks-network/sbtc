@@ -46,9 +46,18 @@ jobs:
     if: inputs.release == 'yes'
     steps:
       - name: Trigger Release Workflow
-        run: |
-          curl -X POST -H "Accept: application/vnd.github.everest-preview+json" \
-               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-               -H "Content-Type: application/json" \
-               https://api.github.com/repos/${{ github.repository }}/dispatches \
-               -d '{"event_type": "image_build_and_draft_release", "client_payload": {"tag_name": "${{ inputs.tag_name }}"}}'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const ref = '${{ inputs.ref }}';
+            const tagName = '${{ inputs.tag_name }}';
+                
+            const response = await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow: 'image-build-and-draft-release.yml',
+                ref: ref,  // The ref (branch, tag, or commit SHA) that should be used
+                inputs: {
+                    tag_name: tagName
+                }
+            });
