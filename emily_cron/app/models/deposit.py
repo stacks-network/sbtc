@@ -4,7 +4,7 @@ from enum import Enum
 import functools
 from typing import Any, Optional, Self
 
-from btclib.script import script
+from bitcoinlib.scripts import Script
 
 from app import settings
 
@@ -48,16 +48,21 @@ class DepositInfo:
     @property
     def lock_time(self) -> int:
         """Extracts lock time from reclaim script."""
-        lock_time = script.parse(self.reclaim_script)[0]
-        if lock_time.startswith("OP_"):
-            return int(lock_time[len("OP_") :])
-        return int.from_bytes(bytes.fromhex(lock_time), byteorder="little")
+        script = Script.parse(self.reclaim_script)
+        op_code_maybe = script.view().split()[0]
+        if op_code_maybe.startswith("OP_"):
+            return int(op_code_maybe[len("OP_") :])
+        return int.from_bytes(script.commands[0], byteorder="little")
 
     @property
     def max_fee(self) -> int:
         """Extracts the max fee from deposit script."""
-        data = script.parse(self.deposit_script)[0]
-        return int.from_bytes(bytes.fromhex(data)[:8])
+        script = Script.parse(self.deposit_script)
+        if script.redeemscript:
+            max_fee_bytes = script.redeemscript
+        else:
+            max_fee_bytes = bytes.fromhex(script.view().split()[0])
+        return int.from_bytes(max_fee_bytes[:8], byteorder="big")
 
     @functools.cached_property
     def deposit_time(self) -> int:
