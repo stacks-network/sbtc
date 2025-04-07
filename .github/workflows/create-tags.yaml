@@ -50,13 +50,12 @@ jobs:
           script: |
             const ref = '${{ github.event.ref }}';
             const tagName = '${{ inputs.tag_name }}';
-                
-            const response = await github.rest.actions.createWorkflowDispatch({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: 'image-build-and-draft-release.yaml',
-                ref: ref,  // The ref (branch, tag, or commit SHA) that should be used
-                inputs: {
-                    tag_name: tagName
-                }
+
+            const response = await github.rest.repos.createDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              event_type: 'image_build_and_draft_release',
+              client_payload: {
+                tag_name: 'tagName'
+              }
             });

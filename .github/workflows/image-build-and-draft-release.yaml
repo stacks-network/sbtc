@@ -22,7 +22,7 @@ concurrency:
   ## Always cancel duplicate jobs
   cancel-in-progress: true
 
-run-name: "Build and Release sBTC Signer ${{ github.ref_name }} Docker Image"
+run-name: "Build and Release sBTC Signer ${{ github.event.client_payload.tag_name }} Docker Image"
 
 jobs:
   image:
@@ -76,10 +76,10 @@ jobs:
           images: |
             ${{ env.ghcr_org }}/sbtc
           tags: |
-            type=raw,value=${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }}
-            type=raw,value=${{ matrix.docker_target }}-${{ github.ref_name }},enable=${{ matrix.dist == 'debian' }}
-            type=raw,value=${{ matrix.docker_target }}-latest,enable=${{ env.latest_release == github.ref_name && matrix.dist == 'debian' }}
-            type=raw,value=${{ matrix.docker_target }}-latest-${{ matrix.dist }},enable=${{ env.latest_release == github.ref_name }}
+            type=raw,value=${{ matrix.docker_target }}-${{ github.event.client_payload.tag_name }}-${{ matrix.dist }}
+            type=raw,value=${{ matrix.docker_target }}-${{ github.event.client_payload.tag_name }},enable=${{ matrix.dist == 'debian' }}
+            type=raw,value=${{ matrix.docker_target }}-latest,enable=${{ env.latest_release == github.event.client_payload.tag_name && matrix.dist == 'debian' }}
+            type=raw,value=${{ matrix.docker_target }}-latest-${{ matrix.dist }},enable=${{ env.latest_release == github.event.client_payload.tag_name }}
 
       ## Build docker image for release
       - name: Build and Push ( ${{ matrix.dist }} ${{ matrix.docker_target }} )
@@ -109,7 +109,7 @@ jobs:
 
       - name: Download artifact attestation 
         run: |
-          gh attestation download oci://${{ env.ghcr_org }}/sbtc:${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }} -R ${{ github.repository_owner }}/sbtc
+          gh attestation download oci://${{ env.ghcr_org }}/sbtc:${{ matrix.docker_target }}-${{ github.event.client_payload.tag_name }}-${{ matrix.dist }} -R ${{ github.repository_owner }}/sbtc
           
           # Rename the attestation bundle (replace ":" with "_")
           ATTESTATION_FILE="$(echo "${{ steps.docker_build.outputs.digest }}.jsonl" | tr ':' '_')"
@@ -134,11 +134,10 @@ jobs:
     name: Draft Release
     runs-on: ubuntu-latest
     needs: image
-    if: startsWith(github.ref, 'refs/tags/') # Runs only if triggered by a tag
     steps:
 
       - name: Set TAG_NAME
-        run: echo "TAG_NAME=${{ github.ref_name }}" >> "$GITHUB_ENV"
+        run: echo "TAG_NAME=${{ github.event.client_payload.tag_name }}" >> "$GITHUB_ENV"
 
       - name: Generate Release Notes
         id: generate-release-notes
