@@ -37,10 +37,6 @@ jobs:
               ref: 'refs/tags/${{ inputs.tag_name }}',
               sha: context.sha
             })
-     
-      - name: Debug release input value
-        run: | 
-            echo "Release input is: ${{ inputs.release }}"
 
   trigger_release:
     name: Trigger Release
@@ -58,7 +54,7 @@ jobs:
             const response = await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                workflow: 'image-build-and-draft-release.yml',
+                workflow: 'image-build-and-draft-release.yaml',
                 ref: ref,  // The ref (branch, tag, or commit SHA) that should be used
                 inputs: {
                     tag_name: tagName
