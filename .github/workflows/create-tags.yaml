@@ -12,8 +12,8 @@ on:
         default: "no"
 
 permissions:
-  contents: write
-  actions: write
+  contents: write # Needed to create a tag
+  actions: write # Needed to trigger another workflow via API
 
 jobs:
   create_tag:
