@@ -37,6 +37,10 @@ jobs:
               ref: 'refs/tags/${{ inputs.tag_name }}',
               sha: context.sha
             })
+     
+      - name: Debug release input value
+        run: | 
+            echo "Release input is: ${{ inputs.release }}"
 
   trigger_release:
     name: Trigger Release
