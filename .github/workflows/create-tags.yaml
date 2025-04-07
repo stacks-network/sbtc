@@ -54,7 +54,7 @@ jobs:
             const response = await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                workflow: 'image-build-and-draft-release.yaml',
+                workflow_id: 'image-build-and-draft-release.yaml',
                 ref: ref,  // The ref (branch, tag, or commit SHA) that should be used
                 inputs: {
                     tag_name: tagName
