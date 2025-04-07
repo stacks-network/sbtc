@@ -3,9 +3,8 @@
 name: GHCR Release Image (Binary)
 
 on:
-  push:
-    tags:
-      - '*'
+  repository_dispatch:
+    types: [image_build_and_draft_release]
 
 permissions:
   id-token: write
