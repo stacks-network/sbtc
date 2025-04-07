@@ -8,9 +8,9 @@ on:
         required: true
       release:
         type: choice
-        description: "Trigger Release? (yes/no)"
+        description: "Trigger Release?"
         required: true
-        default: "no"
+        default: No
         options:
         - No
         - Yes
