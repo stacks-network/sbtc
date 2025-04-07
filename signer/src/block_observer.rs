@@ -766,6 +766,7 @@ mod tests {
     use fake::Fake;
     use model::BitcoinTxId;
     use model::ScriptPubKey;
+    use rand::RngCore;
     use rand::SeedableRng;
     use test_log::test;
 
@@ -778,11 +779,16 @@ mod tests {
     use crate::testing::block_observer::TestHarness;
     use crate::testing::context::*;
 
+    use rand::rngs::OsRng;
+
     use super::*;
 
     #[test(tokio::test)]
     async fn should_be_able_to_extract_bitcoin_blocks_given_a_block_header_stream() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut rng = OsRng::default();
+        let seed = OsRng::next_u64(&mut rng);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
         let storage = storage::in_memory::Store::new_shared();
         let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
         let min_height = test_harness.min_block_height();
@@ -832,7 +838,10 @@ mod tests {
     /// pass validation and have been confirmed.
     #[tokio::test]
     async fn validated_confirmed_deposits_get_added_to_state() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut rng = OsRng::default();
+        let seed = OsRng::next_u64(&mut rng);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
         // We want the test harness to fetch a block from our
         // "bitcoin-core", which in this case is the test harness. So we
@@ -961,7 +970,10 @@ mod tests {
     /// deposit requests into "storage".
     #[tokio::test]
     async fn extract_deposit_requests_stores_validated_deposits() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(365);
+        let mut rng = OsRng::default();
+        let seed = OsRng::next_u64(&mut rng);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
         // We want the test harness to fetch a block from our
@@ -1050,7 +1062,10 @@ mod tests {
     /// bitcoin block that match one of those `scriptPubkey`s.
     #[tokio::test]
     async fn sbtc_transactions_get_stored() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut rng = OsRng::default();
+        let seed = OsRng::next_u64(&mut rng);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
         let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
         let block_hash = BlockHash::from_byte_array([1u8; 32]);
