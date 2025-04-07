@@ -99,6 +99,36 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
     (rpc, faucet)
 }
 
+/// See `initialize_blockchain`
+pub fn initialize_blockchain_devenv() -> (&'static Client, &'static Faucet) {
+    static BTC_CLIENT: OnceLock<Client> = OnceLock::new();
+    static FAUCET: OnceLock<Faucet> = OnceLock::new();
+    let rpc = BTC_CLIENT.get_or_init(|| {
+        let username = BITCOIN_CORE_RPC_USERNAME.to_string();
+        let password = BITCOIN_CORE_RPC_PASSWORD.to_string();
+        let auth = Auth::UserPass(username, password);
+        Client::new(
+            &format!("http://127.0.0.1:18443/wallet/{BITCOIN_CORE_WALLET_NAME}"),
+            auth,
+        )
+        .unwrap()
+    });
+
+    let faucet = FAUCET.get_or_init(|| {
+        get_or_create_wallet(rpc, BITCOIN_CORE_WALLET_NAME);
+        let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, rpc);
+        faucet.track_address(FAUCET_LABEL);
+
+        // We cannot create 100 blocks here, as it may break the Stacks signers.
+        // So we just assume someone already funded the faucet a bit to survive
+        // until the coinbase rewards are spendable.
+
+        faucet
+    });
+
+    (rpc, faucet)
+}
+
 fn get_or_create_wallet(rpc: &Client, wallet: &str) {
     match rpc.load_wallet(wallet) {
         // Success
