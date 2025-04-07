@@ -24,6 +24,25 @@ use tokio::sync::Mutex;
 use super::errors::SignerSwarmError;
 use super::{bootstrap, event_loop};
 
+/// The maximum number of substreams _per connection_. This is used to limit
+/// the number of concurrent substreams that can be opened on a single
+/// connection. The general assumption at the time of writing is:
+/// * GossipSub: 1 bidirectional stream per connection
+/// * Kademlia: 1-3 streams during active lookups, each query can use its own stream
+/// * AutoNAT: 2 streams (one for client, one for server operations)
+/// * Identify: 1 stream for peer identification
+/// * Ping: 1 stream for keepalive pings
+const MAX_SUBSTREAMS_PER_CONNECTION: usize = 20;
+
+/// The maximum time to wait for a connection negotiation to complete. This is
+/// used to prevent potentially malicious peers from being able to hold a
+/// connection in a pending state for all too long, preventing legitimate peers
+/// from connecting. The timeout is set to 5 seconds, which should be sufficient
+/// for most use cases. If a connection cannot be established within this time,
+/// the connection will be closed and the dialing peer will be notified. This
+/// timeout is applied to both inbound and outbound connections.
+const NEGOTIATION_TIMEOUT_SECS: u64 = 5;
+
 /// Define the behaviors of the [`SignerSwarm`] libp2p network.
 #[derive(NetworkBehaviour)]
 pub struct SignerBehavior {
@@ -324,10 +343,15 @@ impl<'a> SignerSwarmBuilder<'a> {
         };
         let behavior = SignerBehavior::new(keypair.clone(), behavior_config)?;
 
-        // Protocol configuration
+        // Noise (encryption) configuration.
         let noise =
             noise::Config::new(&keypair).map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
-        let yamux = yamux::Config::default();
+
+        // Yamux (muxer) configuration.
+        let mut yamux = yamux::Config::default();
+        yamux.set_max_num_streams(MAX_SUBSTREAMS_PER_CONNECTION);
+
+        // TCP transport configuration.
         let tcp_config = tcp::Config::default().nodelay(true);
 
         // Set the dial concurrency factor to limit the number of concurrent dialing
@@ -348,6 +372,10 @@ impl<'a> SignerSwarmBuilder<'a> {
             .upgrade(Version::V1)
             .authenticate(noise.clone())
             .multiplex(yamux.clone())
+            // Apply timeouts to the setup and protocol upgrade process to
+            // prevent potential malicious peers from keeping connections open.
+            .inbound_timeout(Duration::from_secs(NEGOTIATION_TIMEOUT_SECS))
+            .outbound_timeout(Duration::from_secs(NEGOTIATION_TIMEOUT_SECS))
             .boxed();
 
         // If QUIC transport is enabled, add it to the transport.
