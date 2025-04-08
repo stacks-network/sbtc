@@ -81,7 +81,7 @@ jobs:
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Install protobuf compiler
-        run: sudo apt install protobuf-compiler=3.21.12-8.2build1
+        run: sudo apt install -y protobuf-compiler=3.21.12-8.2build1
       - name: Build Tests
         run: make test-build
       - name: Create Nextest Archives
