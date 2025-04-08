@@ -1,4 +1,4 @@
-FROM rust:1.85.1-slim-bookworm AS builder
+FROM rust:1.86.0-slim-bookworm AS builder
 
 # Install dependencies.
 RUN apt-get update
