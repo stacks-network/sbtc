@@ -134,7 +134,7 @@ pub trait GetFees {
 
 /// Filter out the deposit and withdrawal requests that do not meet the
 /// amount or fee requirements.
-pub struct RequestPreprocessor<'a> {
+struct RequestPreprocessor<'a> {
     /// The current sBTC limits on deposits and withdrawals.
     sbtc_limits: &'a SbtcLimits,
     /// The current market fee rate in sat/vByte.
@@ -145,8 +145,9 @@ pub struct RequestPreprocessor<'a> {
 }
 
 impl<'a> RequestPreprocessor<'a> {
-    /// Create a new [`DepositFilter`] instance.
-    pub fn new(sbtc_limits: &'a SbtcLimits, fee_rate: f64, last_fees: Option<Fees>) -> Self {
+    /// Create a new [`RequestPreprocessor`] instance.
+    #[cfg(test)]
+    fn new(sbtc_limits: &'a SbtcLimits, fee_rate: f64, last_fees: Option<Fees>) -> Self {
         Self {
             sbtc_limits,
             fee_rate,
