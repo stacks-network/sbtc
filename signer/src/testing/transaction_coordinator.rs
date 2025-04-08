@@ -283,9 +283,11 @@ where
         assert!(!withdrawals_in_storage.is_empty());
         for withdrawal in withdrawals_in_storage {
             if withdrawal.bitcoin_block_height > max_processable_height {
-                assert!(!withdrawals
-                    .iter()
-                    .any(|w| w.qualified_id() == withdrawal.qualified_id()));
+                assert!(
+                    !withdrawals
+                        .iter()
+                        .any(|w| w.qualified_id() == withdrawal.qualified_id())
+                );
                 tracing::info!(
                     request_id = %withdrawal.request_id,
                     block_height = %withdrawal.bitcoin_block_height,
@@ -295,9 +297,11 @@ where
             }
 
             if withdrawal.bitcoin_block_height <= min_processable_height {
-                assert!(!withdrawals
-                    .iter()
-                    .any(|w| w.qualified_id() == withdrawal.qualified_id()));
+                assert!(
+                    !withdrawals
+                        .iter()
+                        .any(|w| w.qualified_id() == withdrawal.qualified_id())
+                );
                 tracing::info!(
                     request_id = %withdrawal.request_id,
                     block_height = %withdrawal.bitcoin_block_height,
