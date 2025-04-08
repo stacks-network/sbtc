@@ -46,7 +46,7 @@ jobs:
           components: clippy, rustfmt
           cache-key: "rust-tests"
       - name: Install protobuf compiler
-        run: sudo apt install -y protobuf-compiler=3.12.4-1ubuntu1
+        run: sudo apt install -y protobuf-compiler=29.3
       - name: Install Package Dependencies
         run: make install
       - name: Lint (Rustfmt)
@@ -81,7 +81,7 @@ jobs:
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Install protobuf compiler
-        run: sudo apt install -y protobuf-compiler=3.12.4-1ubuntu1
+        run: sudo apt install -y protobuf-compiler=29.3
       - name: Build Tests
         run: make test-build
       - name: Create Nextest Archives
@@ -111,7 +111,7 @@ jobs:
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Install protobuf compiler
-        run: sudo apt install -y protobuf-compiler=3.12.4-1ubuntu1
+        run: sudo apt install -y protobuf-compiler=29.3
       - name: Install Package Dependencies
         run: make install
       - name: Download Nextest Archives
