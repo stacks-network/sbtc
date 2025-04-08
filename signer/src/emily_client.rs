@@ -55,11 +55,11 @@ pub enum EmilyClientError {
 
     /// An error occurred while updating deposits
     #[error("error updating deposits: {0}")]
-    UpdateDeposits(EmilyError<deposit_api::UpdateDepositsError>),
+    UpdateDeposits(EmilyError<deposit_api::UpdateDepositsSignerError>),
 
     /// An error occurred while updating withdrawals
     #[error("error updating withdrawals: {0}")]
-    UpdateWithdrawals(EmilyError<withdrawal_api::UpdateWithdrawalsError>),
+    UpdateWithdrawals(EmilyError<withdrawal_api::UpdateWithdrawalsSignerError>),
 
     /// An error occurred while getting limits
     #[error("error getting limits: {0}")]
@@ -322,7 +322,7 @@ impl EmilyInteract for EmilyClient {
         }
 
         let update_request = UpdateDepositsRequestBody { deposits: update_deposits };
-        deposit_api::update_deposits(&self.config, update_request)
+        deposit_api::update_deposits_signer(&self.config, update_request)
             .await
             .map_err(EmilyClientError::UpdateDeposits)
             .map_err(Error::EmilyApi)
@@ -382,7 +382,7 @@ impl EmilyInteract for EmilyClient {
         let update_request = UpdateWithdrawalsRequestBody {
             withdrawals: update_withdrawals,
         };
-        withdrawal_api::update_withdrawals(&self.config, update_request)
+        withdrawal_api::update_withdrawals_signer(&self.config, update_request)
             .await
             .map_err(EmilyClientError::UpdateWithdrawals)
             .map_err(Error::EmilyApi)

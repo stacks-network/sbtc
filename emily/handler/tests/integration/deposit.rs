@@ -793,7 +793,7 @@ async fn update_deposits() {
         .expect("Received an error after making a valid set chainstate api call.");
 
     let update_deposits_response =
-        apis::deposit_api::update_deposits(&configuration, update_request)
+        apis::deposit_api::update_deposits_sidecar(&configuration, update_request)
             .await
             .expect("Received an error after making a valid update deposits api call.");
 
@@ -863,7 +863,7 @@ async fn create_deposit_handles_duplicates(status: Status) {
         })));
     }
 
-    apis::deposit_api::update_deposits(
+    apis::deposit_api::update_deposits_sidecar(
         &configuration,
         UpdateDepositsRequestBody {
             deposits: vec![DepositUpdate {
@@ -984,7 +984,7 @@ async fn update_deposits_is_forbidden(
             })));
         }
 
-        apis::deposit_api::update_deposits(
+        apis::deposit_api::update_deposits_sidecar(
             &testing_configuration,
             UpdateDepositsRequestBody {
                 deposits: vec![DepositUpdate {
@@ -1013,7 +1013,7 @@ async fn update_deposits_is_forbidden(
         })));
     }
 
-    let response = apis::deposit_api::update_deposits(
+    let response = apis::deposit_api::update_deposits_sidecar(
         &user_configuration,
         UpdateDepositsRequestBody {
             deposits: vec![DepositUpdate {

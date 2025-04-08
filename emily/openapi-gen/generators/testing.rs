@@ -21,6 +21,7 @@ use super::CorsSupport;
         api::handlers::deposit::get_deposits,
         api::handlers::deposit::create_deposit,
         api::handlers::deposit::update_deposits_sidecar,
+        api::handlers::deposit::update_deposits_signer,
         // Withdrawal endpoints.
         api::handlers::withdrawal::get_withdrawal,
         api::handlers::withdrawal::get_withdrawals,
@@ -28,6 +29,7 @@ use super::CorsSupport;
         api::handlers::withdrawal::get_withdrawals_for_sender,
         api::handlers::withdrawal::create_withdrawal,
         api::handlers::withdrawal::update_withdrawals_sidecar,
+        api::handlers::withdrawal::update_withdrawals_signer,
         // Chainstate endpoints.
         api::handlers::chainstate::get_chain_tip,
         api::handlers::chainstate::get_chainstate_at_height,

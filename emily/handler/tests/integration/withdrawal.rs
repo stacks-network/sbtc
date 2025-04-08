@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use test_case::test_case;
 
 use testing_emily_client::apis::chainstate_api::set_chainstate;
-use testing_emily_client::apis::configuration::{ApiKey, Configuration};
+use testing_emily_client::apis::configuration::Configuration;
 use testing_emily_client::apis::{self, ResponseContent};
 use testing_emily_client::models::{
     Chainstate, CreateWithdrawalRequestBody, Fulfillment, Status, UpdateWithdrawalsRequestBody,
@@ -18,6 +18,12 @@ const SENDER: &'static str = "TEST_SENDER";
 const BLOCK_HASH: &'static str = "TEST_BLOCK_HASH";
 const BLOCK_HEIGHT: u64 = 0;
 const INITIAL_WITHDRAWAL_STATUS_MESSAGE: &'static str = "Just received withdrawal";
+
+#[derive(Debug)]
+enum WithdrawalError {
+    Sidecar(apis::Error<apis::withdrawal_api::UpdateWithdrawalsSidecarError>),
+    Signer(apis::Error<apis::withdrawal_api::UpdateWithdrawalsSignerError>),
+}
 
 /// An arbitrary fully ordered partial cmp comparator for WithdrawalInfos.
 /// This is useful for sorting vectors of withdrawal infos so that vectors with
@@ -492,7 +498,7 @@ async fn update_withdrawals() {
         .expect("Received an error after making a valid set chainstate api call.");
 
     let update_withdrawals_response =
-        apis::withdrawal_api::update_withdrawals(&configuration, update_request)
+        apis::withdrawal_api::update_withdrawals_sidecar(&configuration, update_request)
             .await
             .expect("Received an error after making a valid update withdrawals api call.");
 
@@ -504,41 +510,37 @@ async fn update_withdrawals() {
     assert_eq!(expected_withdrawals, updated_withdrawals);
 }
 
-#[test_case(Status::Pending, Status::Pending, "untrusted_api_key", true; "untrusted_key_pending_to_pending")]
-#[test_case(Status::Pending, Status::Accepted, "untrusted_api_key", false; "untrusted_key_pending_to_accepted")]
-#[test_case(Status::Pending, Status::Reprocessing, "untrusted_api_key", true; "untrusted_key_pending_to_reprocessing")]
-#[test_case(Status::Pending, Status::Confirmed, "untrusted_api_key", true; "untrusted_key_pending_to_confirmed")]
-#[test_case(Status::Pending, Status::Failed, "untrusted_api_key", true; "untrusted_key_pending_to_failed")]
-#[test_case(Status::Accepted, Status::Pending, "untrusted_api_key", true; "untrusted_key_accepted_to_pending")]
-#[test_case(Status::Failed, Status::Pending, "untrusted_api_key", true; "untrusted_key_failed_to_pending")]
-#[test_case(Status::Reprocessing, Status::Pending, "untrusted_api_key", true; "untrusted_key_reprocessing_to_pending")]
-#[test_case(Status::Confirmed, Status::Pending, "untrusted_api_key", true; "untrusted_key_confirmed_to_pending")]
-#[test_case(Status::Accepted, Status::Accepted, "untrusted_api_key", false; "untrusted_key_accepted_to_accepted")]
-#[test_case(Status::Failed, Status::Accepted, "untrusted_api_key", true; "untrusted_key_failed_to_accepted")]
-#[test_case(Status::Reprocessing, Status::Accepted, "untrusted_api_key", true; "untrusted_key_reprocessing_to_accepted")]
-#[test_case(Status::Confirmed, Status::Accepted, "untrusted_api_key", true; "untrusted_key_confirmed_to_accepted")]
-#[test_case(Status::Pending, Status::Accepted, "testApiKey", false; "trusted_key_pending_to_accepted")]
-#[test_case(Status::Pending, Status::Pending, "testApiKey", false; "trusted_key_pending_to_pending")]
-#[test_case(Status::Pending, Status::Reprocessing, "testApiKey", false; "trusted_key_pending_to_reprocessing")]
-#[test_case(Status::Pending, Status::Confirmed, "testApiKey", false; "trusted_key_pending_to_confirmed")]
-#[test_case(Status::Pending, Status::Failed, "testApiKey", false; "trusted_key_pending_to_failed")]
-#[test_case(Status::Confirmed, Status::Pending, "testApiKey", false; "trusted_key_confirmed_to_pending")]
+#[test_case(Status::Pending, Status::Pending, false, true; "untrusted_key_pending_to_pending")]
+#[test_case(Status::Pending, Status::Accepted, false, false; "untrusted_key_pending_to_accepted")]
+#[test_case(Status::Pending, Status::Reprocessing, false, true; "untrusted_key_pending_to_reprocessing")]
+#[test_case(Status::Pending, Status::Confirmed, false, true; "untrusted_key_pending_to_confirmed")]
+#[test_case(Status::Pending, Status::Failed, false, true; "untrusted_key_pending_to_failed")]
+#[test_case(Status::Accepted, Status::Pending, false, true; "untrusted_key_accepted_to_pending")]
+#[test_case(Status::Failed, Status::Pending, false, true; "untrusted_key_failed_to_pending")]
+#[test_case(Status::Reprocessing, Status::Pending, false, true; "untrusted_key_reprocessing_to_pending")]
+#[test_case(Status::Confirmed, Status::Pending, false, true; "untrusted_key_confirmed_to_pending")]
+#[test_case(Status::Accepted, Status::Accepted, false, false; "untrusted_key_accepted_to_accepted")]
+#[test_case(Status::Failed, Status::Accepted, false, true; "untrusted_key_failed_to_accepted")]
+#[test_case(Status::Reprocessing, Status::Accepted, false, true; "untrusted_key_reprocessing_to_accepted")]
+#[test_case(Status::Confirmed, Status::Accepted, false, true; "untrusted_key_confirmed_to_accepted")]
+#[test_case(Status::Pending, Status::Accepted, true, false; "trusted_key_pending_to_accepted")]
+#[test_case(Status::Pending, Status::Pending, true, false; "trusted_key_pending_to_pending")]
+#[test_case(Status::Pending, Status::Reprocessing, true, false; "trusted_key_pending_to_reprocessing")]
+#[test_case(Status::Pending, Status::Confirmed, true, false; "trusted_key_pending_to_confirmed")]
+#[test_case(Status::Pending, Status::Failed, true, false; "trusted_key_pending_to_failed")]
+#[test_case(Status::Confirmed, Status::Pending, true, false; "trusted_key_confirmed_to_pending")]
 #[tokio::test]
 async fn update_withdrawals_is_forbidden(
     previous_status: Status,
     new_status: Status,
-    api_key: &str,
+    is_sidecar: bool,
     is_forbidden: bool,
 ) {
     // the testing configuration has privileged access to all endpoints.
     let testing_configuration = clean_setup().await;
 
     // the user configuration access depends on the api_key.
-    let mut user_configuration = testing_configuration.clone();
-    user_configuration.api_key = Some(ApiKey {
-        prefix: None,
-        key: api_key.to_string(),
-    });
+    let user_configuration = testing_configuration.clone();
     // Arrange.
     // --------
     let request_id = 1;
@@ -585,7 +587,7 @@ async fn update_withdrawals_is_forbidden(
             })));
         }
 
-        apis::withdrawal_api::update_withdrawals(
+        apis::withdrawal_api::update_withdrawals_sidecar(
             &testing_configuration,
             UpdateWithdrawalsRequestBody {
                 withdrawals: vec![WithdrawalUpdate {
@@ -613,28 +615,51 @@ async fn update_withdrawals_is_forbidden(
         })));
     }
 
-    let response = apis::withdrawal_api::update_withdrawals(
-        &user_configuration,
-        UpdateWithdrawalsRequestBody {
-            withdrawals: vec![WithdrawalUpdate {
-                request_id,
-                fulfillment,
-                status: new_status,
-                status_message: "foo".into(),
-            }],
-        },
-    )
-    .await;
+    let response = if is_sidecar {
+        apis::withdrawal_api::update_withdrawals_sidecar(
+            &user_configuration,
+            UpdateWithdrawalsRequestBody {
+                withdrawals: vec![WithdrawalUpdate {
+                    request_id,
+                    fulfillment,
+                    status: new_status,
+                    status_message: "foo".into(),
+                }],
+            },
+        )
+        .await
+        .map_err(WithdrawalError::Sidecar)
+    } else {
+        apis::withdrawal_api::update_withdrawals_signer(
+            &user_configuration,
+            UpdateWithdrawalsRequestBody {
+                withdrawals: vec![WithdrawalUpdate {
+                    request_id,
+                    fulfillment,
+                    status: new_status,
+                    status_message: "foo".into(),
+                }],
+            },
+        )
+        .await
+        .map_err(WithdrawalError::Signer)
+    };
 
     if is_forbidden {
         assert!(response.is_err());
+
         match response.unwrap_err() {
-            testing_emily_client::apis::Error::ResponseError(ResponseContent {
-                status, ..
-            }) => {
+            WithdrawalError::Sidecar(testing_emily_client::apis::Error::ResponseError(
+                ResponseContent { status, .. },
+            )) => {
                 assert_eq!(status, 403);
             }
-            e => panic!("Expected a 403 error, got {e}"),
+            WithdrawalError::Signer(testing_emily_client::apis::Error::ResponseError(
+                ResponseContent { status, .. },
+            )) => {
+                assert_eq!(status, 403);
+            }
+            e => panic!("Expected a 403 error, got {:#?}", e),
         }
 
         let response = apis::withdrawal_api::get_withdrawal(&user_configuration, request_id)

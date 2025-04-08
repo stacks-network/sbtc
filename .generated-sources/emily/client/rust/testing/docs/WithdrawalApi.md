@@ -10,6 +10,7 @@ Method | HTTP request | Description
 [**get_withdrawals_for_recipient**](WithdrawalApi.md#get_withdrawals_for_recipient) | **GET** /withdrawal/recipient/{recipient} | Get withdrawals by recipient handler.
 [**get_withdrawals_for_sender**](WithdrawalApi.md#get_withdrawals_for_sender) | **GET** /withdrawal/sender/{sender} | Get withdrawals by sender handler.
 [**update_withdrawals_sidecar**](WithdrawalApi.md#update_withdrawals_sidecar) | **PUT** /withdrawal/private | Update withdrawals handler.
+[**update_withdrawals_signer**](WithdrawalApi.md#update_withdrawals_signer) | **PUT** /withdrawal | Update withdrawals handler.
 
 
 
@@ -162,6 +163,34 @@ No authorization required
 ## update_withdrawals_sidecar
 
 > models::UpdateWithdrawalsResponse update_withdrawals_sidecar(update_withdrawals_request_body)
+Update withdrawals handler.
+
+### Parameters
+
+
+Name | Type | Description  | Required | Notes
+------------- | ------------- | ------------- | ------------- | -------------
+**update_withdrawals_request_body** | [**UpdateWithdrawalsRequestBody**](UpdateWithdrawalsRequestBody.md) |  | [required] |
+
+### Return type
+
+[**models::UpdateWithdrawalsResponse**](UpdateWithdrawalsResponse.md)
+
+### Authorization
+
+[ApiGatewayKey](../README.md#ApiGatewayKey)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+
+## update_withdrawals_signer
+
+> models::UpdateWithdrawalsResponse update_withdrawals_signer(update_withdrawals_request_body)
 Update withdrawals handler.
 
 ### Parameters
