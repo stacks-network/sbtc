@@ -145,16 +145,6 @@ struct RequestPreprocessor<'a> {
 }
 
 impl<'a> RequestPreprocessor<'a> {
-    /// Create a new [`RequestPreprocessor`] instance.
-    #[cfg(test)]
-    fn new(sbtc_limits: &'a SbtcLimits, fee_rate: f64, last_fees: Option<Fees>) -> Self {
-        Self {
-            sbtc_limits,
-            fee_rate,
-            last_fees,
-        }
-    }
-
     /// Validate deposit requests based on four constraints:
     /// 1. The user's max fee must be >= our minimum required fee for deposits
     ///    (based on fixed deposit tx size)
@@ -3331,7 +3321,11 @@ mod tests {
         num_accepted_deposits: usize,
         accepted_amount: u64,
     ) {
-        let filter = RequestPreprocessor::new(sbtc_limits, fee_rate, None);
+        let filter = RequestPreprocessor {
+            sbtc_limits,
+            fee_rate,
+            last_fees: None,
+        };
 
         let deposits = filter.filter_deposits(deposits);
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
@@ -3470,7 +3464,11 @@ mod tests {
     fn test_withdrawal_request_filtering(case: WithdrawalLimitTestCase) {
         let limits =
             SbtcLimits::from_withdrawal_limits(case.per_withdrawal_cap, case.rolling_limits);
-        let preprocessor = RequestPreprocessor::new(&limits, case.fee_rate, None);
+        let preprocessor = RequestPreprocessor {
+            sbtc_limits: &limits,
+            fee_rate: case.fee_rate,
+            last_fees: None,
+        };
 
         let withdrawals = preprocessor.preprocess_withdrawals(&case.withdrawals);
         let total_amount: u64 = withdrawals
