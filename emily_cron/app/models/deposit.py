@@ -49,7 +49,7 @@ class DepositInfo:
     def lock_time(self) -> int:
         """Extracts lock time from reclaim script."""
         script = Script.parse(self.reclaim_script)
-        op_code_maybe = script.view().split()[0]
+        op_code_maybe = script.view(as_list=True)[0]
         if op_code_maybe.startswith("OP_"):
             return int(op_code_maybe[len("OP_") :])
         return int.from_bytes(script.commands[0], byteorder="little", signed=True)
@@ -61,7 +61,7 @@ class DepositInfo:
         if script.redeemscript:
             max_fee_bytes = script.redeemscript
         else:
-            max_fee_bytes = bytes.fromhex(script.view().split()[0])
+            max_fee_bytes = bytes.fromhex(script.view(as_list=True)[0])
         return int.from_bytes(max_fee_bytes[:8], byteorder="big")
 
     @functools.cached_property
