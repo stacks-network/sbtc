@@ -52,7 +52,7 @@ class DepositInfo:
         op_code_maybe = script.view().split()[0]
         if op_code_maybe.startswith("OP_"):
             return int(op_code_maybe[len("OP_") :])
-        return int.from_bytes(script.commands[0], byteorder="little")
+        return int.from_bytes(script.commands[0], byteorder="little", signed=True)
 
     @property
     def max_fee(self) -> int:
