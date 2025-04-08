@@ -73,7 +73,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bitcoinlib", specifier = ">=0.7.2" },
+    { name = "bitcoinlib", specifier = "==0.7.2" },
     { name = "requests", specifier = "==2.32.3" },
 ]
 
