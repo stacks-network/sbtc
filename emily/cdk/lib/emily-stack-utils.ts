@@ -136,18 +136,6 @@ export class EmilyStackUtils {
     }
 
     /*
-     * Returns the api key that is allowed to make chainstate reorgs.
-     */
-    public static getTrustedReorgApiKey(): string {
-        this.trustedReorgApiKey ??= process.env.TRUSTED_REORG_API_KEY;
-        if (this.trustedReorgApiKey === undefined) {
-            throw new Error('Must define a trusted reorg api key.');
-        }
-        return this.trustedReorgApiKey;
-    }
-
-
-    /*
      * Returns the address of the deployer of the sBTC smart contracts.
      */
     public static getDeployerAddress(): string {

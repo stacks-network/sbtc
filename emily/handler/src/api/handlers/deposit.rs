@@ -420,17 +420,15 @@ pub async fn create_deposit(
     ),
     security(("ApiGatewayKey" = []))
 )]
-#[instrument(skip(context, api_key))]
+#[instrument(skip(context))]
 pub async fn update_deposits(
     context: EmilyContext,
-    api_key: String,
     body: UpdateDepositsRequestBody,
 ) -> impl warp::reply::Reply {
     tracing::debug!("in update deposits");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        api_key: String,
         body: UpdateDepositsRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Get the api state and error if the api state is claimed by a reorg.
@@ -441,7 +439,7 @@ pub async fn update_deposits(
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
-        let is_trusted_key = context.settings.trusted_reorg_api_key == api_key;
+        let is_trusted_key = true;
         // Signers are only allowed to update deposits to the accepted state.
         if !is_trusted_key {
             let is_unauthorized = body
@@ -506,7 +504,7 @@ pub async fn update_deposits(
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
-    handler(context, api_key, body)
+    handler(context, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }

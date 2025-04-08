@@ -315,17 +315,15 @@ pub async fn create_withdrawal(
     ),
     security(("ApiGatewayKey" = []))
 )]
-#[instrument(skip(context, api_key))]
+#[instrument(skip(context))]
 pub async fn update_withdrawals(
     context: EmilyContext,
-    api_key: String,
     body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
     tracing::debug!("in update withdrawals");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        api_key: String,
         body: UpdateWithdrawalsRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Get the api state and error if the api state is claimed by a reorg.
@@ -336,7 +334,7 @@ pub async fn update_withdrawals(
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
-        let is_trusted_key = context.settings.trusted_reorg_api_key == api_key;
+        let is_trusted_key = true;
         // Signers are only allowed to update withdrawals to the accepted state.
         if !is_trusted_key {
             let is_unauthorized = body
@@ -398,7 +396,7 @@ pub async fn update_withdrawals(
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
-    handler(context, api_key, body)
+    handler(context, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }

@@ -84,7 +84,6 @@ fn update_withdrawals(
         .map(move || context.clone())
         .and(warp::path("withdrawal"))
         .and(warp::put())
-        .and(warp::header::<String>("x-api-key"))
         .and(warp::body::json())
         .then(handlers::withdrawal::update_withdrawals)
 }

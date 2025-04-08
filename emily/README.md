@@ -37,7 +37,6 @@ environment: {
     CHAINSTATE_TABLE_NAME: chainstateTableName,
     LIMIT_TABLE_NAME: limitTableName,
     IS_LOCAL: "true" | "false",
-    TRUSTED_REORG_API_KEY: trustedReorgApiKey,
     IS_MAINNET: "true" | "false",
     DEPLOYER_ADDRESS: "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"  // Substitute with the real address
 },
@@ -75,10 +74,6 @@ CUSTOM_ROOT_DOMAIN_NAME=<your-url.com>
 # the hosted zone id of the domain name, taken from AWS console after
 # purchasing your domain.
 HOSTED_ZONE_ID=Z00000000000000000000
-
-# The api key that you trust to indicate valid reorgs on the
-# api chainstate.
-TRUSTED_REORG_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Whether to deploy only the dynamodb tables - helpful for testing.
 TABLES_ONLY=false

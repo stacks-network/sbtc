@@ -33,8 +33,6 @@ pub struct Settings {
     pub limit_table_name: String,
     /// The default global limits for the system.
     pub default_limits: AccountLimits,
-    /// The API key for the Bitcoin Layer 2 API.
-    pub trusted_reorg_api_key: String,
     /// Whether the lambda is expecting transactions on mainnet.
     pub is_mainnet: bool,
     /// The version of the lambda.
@@ -75,7 +73,6 @@ impl fmt::Debug for EmilyContext {
                 "deployer_address",
                 &self.settings.deployer_address.to_string(),
             )
-            .field("trusted_reorg_api_key", &"[REDACTED]")
             .finish()
     }
 }
@@ -122,7 +119,6 @@ impl Settings {
                     .map(|v| v.parse())
                     .transpose()?,
             },
-            trusted_reorg_api_key: env::var("TRUSTED_REORG_API_KEY")?,
             is_mainnet: env::var("IS_MAINNET")?.to_lowercase() == "true",
             version: env::var("VERSION")?,
             deployer_address,
@@ -211,7 +207,6 @@ impl EmilyContext {
                     .expect("Couldn't find valid limit table table in existing table list.")
                     .to_string(),
                 default_limits: AccountLimits::default(),
-                trusted_reorg_api_key: "testApiKey".to_string(),
                 is_mainnet: false,
                 version: "local-instance".to_string(),
                 deployer_address: PrincipalData::parse_standard_principal(

@@ -110,7 +110,6 @@ pub async fn new_block(
         handle_internal_call(
             set_chainstate(
                 context.clone(),
-                context.settings.trusted_reorg_api_key.clone(),
                 Chainstate {
                     stacks_block_height: stacks_chaintip.block_height,
                     stacks_block_hash: stacks_chaintip.block_hash.clone(),
@@ -189,7 +188,6 @@ pub async fn new_block(
             handle_internal_call(
                 update_deposits(
                     context.clone(),
-                    context.settings.trusted_reorg_api_key.clone(),
                     UpdateDepositsRequestBody { deposits: completed_deposits },
                 ),
                 "failed to update deposits in Emily",
@@ -212,7 +210,6 @@ pub async fn new_block(
             handle_internal_call(
                 update_withdrawals(
                     context.clone(),
-                    context.settings.trusted_reorg_api_key.clone(),
                     UpdateWithdrawalsRequestBody {
                         withdrawals: updated_withdrawals,
                     },

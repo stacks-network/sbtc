@@ -430,7 +430,6 @@ export class EmilyStack extends cdk.Stack {
                 // deployments the AWS stack. SAM can only set environment variables that are
                 // already expected to be present in the lambda.
                 IS_LOCAL: "false",
-                TRUSTED_REORG_API_KEY: props.trustedReorgApiKey,
                 IS_MAINNET: props.stageName == Constants.PROD_STAGE_NAME || props.stageName == Constants.PRIVATE_MAINNET_STAGE_NAME ? "true" : "false",
                 VERSION: EmilyStackUtils.getLambdaGitIdentifier(),
                 DEPLOYER_ADDRESS: props.deployerAddress,
