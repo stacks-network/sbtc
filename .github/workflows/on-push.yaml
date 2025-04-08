@@ -1,4 +1,4 @@
-name: On Push
+name: On PR/Push
 on:
   push:
   pull_request:
@@ -7,8 +7,9 @@ on:
 permissions: read-all
 
 concurrency:
-  # limit concurrency of entire workflow runs for a specific branch
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Ensure that this workflow only runs once at a time for each PR or push,
+  # cancelling any in-progress runs for the same HEAD (PR) or branch (Push).
+  group: on-pr-or-push-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
