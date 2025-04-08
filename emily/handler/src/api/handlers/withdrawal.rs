@@ -301,7 +301,7 @@ pub async fn create_withdrawal(
 /// Update withdrawals handler.
 #[utoipa::path(
     put,
-    operation_id = "updateWithdrawals",
+    operation_id = "updateWithdrawalsSigner",
     path = "/withdrawal",
     tag = "withdrawal",
     request_body = UpdateWithdrawalsRequestBody,
@@ -316,7 +316,7 @@ pub async fn create_withdrawal(
     security(("ApiGatewayKey" = []))
 )]
 #[instrument(skip(context))]
-pub async fn update_withdrawals(
+pub async fn update_withdrawals_signer(
     context: EmilyContext,
     body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
@@ -334,9 +334,8 @@ pub async fn update_withdrawals(
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
-        let is_trusted_key = true;
+
         // Signers are only allowed to update withdrawals to the accepted state.
-        if !is_trusted_key {
             let is_unauthorized = body
                 .withdrawals
                 .iter()
@@ -345,7 +344,7 @@ pub async fn update_withdrawals(
             if is_unauthorized {
                 return Err(Error::Forbidden);
             }
-        }
+        
 
         // Validate request.
         let validated_request: ValidatedUpdateWithdrawalRequest =
@@ -364,7 +363,97 @@ pub async fn update_withdrawals(
                 &context,
                 update,
                 15,
-                is_trusted_key,
+                false,
+            )
+            .await
+            .inspect_err(|error| {
+                tracing::error!(
+                    request_id,
+                    %error,
+                    "failed to update withdrawal",
+                );
+            })?;
+
+            let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
+                // This should never happen, because the withdrawal was
+                // validated before being updated.
+                tracing::error!(
+                    request_id,
+                    %error,
+                    "failed to convert updated withdrawal",
+                );
+            })?;
+
+            updated_withdrawals.push((index, withdrawal));
+        }
+        updated_withdrawals.sort_by_key(|(index, _)| *index);
+        let withdrawals = updated_withdrawals
+            .into_iter()
+            .map(|(_, withdrawal)| withdrawal)
+            .collect();
+        let response = UpdateWithdrawalsResponse { withdrawals };
+        Ok(with_status(json(&response), StatusCode::CREATED))
+    }
+    // Handle and respond.
+    handler(context, body)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Update withdrawals handler.
+#[utoipa::path(
+    put,
+    operation_id = "updateWithdrawalsSidecar",
+    path = "/withdrawal/private",
+    tag = "withdrawal",
+    request_body = UpdateWithdrawalsRequestBody,
+    responses(
+        (status = 201, description = "Withdrawals updated successfully", body = UpdateWithdrawalsResponse),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    security(("ApiGatewayKey" = []))
+)]
+#[instrument(skip(context))]
+pub async fn update_withdrawals_sidecar(
+    context: EmilyContext,
+    body: UpdateWithdrawalsRequestBody,
+) -> impl warp::reply::Reply {
+    tracing::debug!("in update withdrawals");
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        body: UpdateWithdrawalsRequestBody,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Get the api state and error if the api state is claimed by a reorg.
+        //
+        // Note: This may not be necessary due to the implied order of events
+        // that the API can receive from stacks nodes, but it's being added here
+        // in order to enforce added stability to the API during a reorg.
+        let api_state = accessors::get_api_state(&context).await?;
+        api_state.error_if_reorganizing()?;
+
+        // Validate request.
+        let validated_request: ValidatedUpdateWithdrawalRequest =
+            body.try_into_validated_update_request(api_state.chaintip().into())?;
+
+        // Create aggregator.
+        let mut updated_withdrawals: Vec<(usize, Withdrawal)> =
+            Vec::with_capacity(validated_request.withdrawals.len());
+
+        // Loop through all updates and execute.
+        for (index, update) in validated_request.withdrawals {
+            let request_id = update.request_id;
+            debug!(request_id, "updating withdrawal");
+
+            let updated_withdrawal = accessors::pull_and_update_withdrawal_with_retry(
+                &context,
+                update,
+                15,
+                true,
             )
             .await
             .inspect_err(|error| {
