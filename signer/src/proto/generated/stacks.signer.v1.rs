@@ -9,9 +9,6 @@ pub struct QualifiedRequestId {
     /// withdrawal request.
     #[prost(uint64, tag = "1")]
     pub request_id: u64,
-    /// The txid that generated the request.
-    #[prost(message, optional, tag = "2")]
-    pub txid: ::core::option::Option<super::super::StacksTxid>,
     /// The Stacks block ID that includes the transaction that generated
     /// the request.
     #[prost(message, optional, tag = "3")]
@@ -53,10 +50,6 @@ pub struct SignerWithdrawalDecision {
     /// must be 32 bytes.
     #[prost(message, optional, tag = "2")]
     pub block_id: ::core::option::Option<super::super::StacksBlockId>,
-    /// The stacks transaction ID that lead to the creation of the
-    /// withdrawal request.
-    #[prost(message, optional, tag = "3")]
-    pub txid: ::core::option::Option<super::super::StacksTxid>,
     /// Whether or not the signer has accepted the withdrawal request.
     #[prost(bool, tag = "4")]
     pub accepted: bool,

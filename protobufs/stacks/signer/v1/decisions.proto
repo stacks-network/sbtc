@@ -21,14 +21,12 @@ message SignerDepositDecision {
 
 // Represents a decision to accept or reject a withdrawal request.
 message SignerWithdrawalDecision {
+  reserved 3;
   // ID of the withdraw request.
   uint64 request_id = 1;
   // The Stacks block ID of the Stacks block containing the request. It
   // must be 32 bytes.
   stacks.StacksBlockId block_id = 2;
-  // The stacks transaction ID that lead to the creation of the
-  // withdrawal request.
-  stacks.StacksTxid txid = 3;
   // Whether or not the signer has accepted the withdrawal request.
   bool accepted = 4;
 }

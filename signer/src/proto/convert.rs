@@ -362,7 +362,6 @@ impl From<SignerWithdrawalDecision> for proto::SignerWithdrawalDecision {
             request_id: value.request_id,
             block_id: Some(value.block_hash.into()),
             accepted: value.accepted,
-            txid: None,
         }
     }
 }
@@ -1155,7 +1154,6 @@ impl From<QualifiedRequestId> for proto::QualifiedRequestId {
     fn from(value: QualifiedRequestId) -> Self {
         proto::QualifiedRequestId {
             request_id: value.request_id,
-            txid: None,
             block_hash: Some(value.block_hash.into()),
         }
     }
