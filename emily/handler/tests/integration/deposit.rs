@@ -12,7 +12,6 @@ use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
 use testing_emily_client::apis::ResponseContent;
 use testing_emily_client::apis::chainstate_api::set_chainstate;
-use testing_emily_client::apis::configuration::ApiKey;
 use testing_emily_client::models::{Chainstate, Fulfillment, Status, UpdateDepositsRequestBody};
 use testing_emily_client::{
     apis::{self, configuration::Configuration},
@@ -936,7 +935,7 @@ async fn update_deposits_is_forbidden(
     let testing_configuration = clean_setup().await;
 
     // the user configuration access depends on the api_key.
-    let mut user_configuration = testing_configuration.clone();
+    let user_configuration = testing_configuration.clone();
     // Arrange.
     // --------
     let bitcoin_tx_output_index = 0;
