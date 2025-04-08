@@ -28,12 +28,14 @@ use clarity::vm::Value;
 use clarity::vm::types::PrincipalData;
 use fake::Fake as _;
 use more_asserts::assert_ge;
+use reqwest::Client;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
 use sbtc::deposits::DepositScriptInputs;
 use sbtc::deposits::ReclaimScriptInputs;
 use sbtc::testing::regtest::AsUtxo;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::to_value;
 use signer::bitcoin::utxo::DepositRequest;
 use signer::error::Error;
@@ -78,7 +80,11 @@ use url::Url;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
 
 const DEVENV_DEPLOYER: &str = "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS";
+const DEVENV_STACKS_API: &str = "http://127.0.0.1:3999";
 
+/// Simple test checking the block observer behaviour when bitcoin forks
+/// Note that this doesn't require devenv per se, it's just a sanity check for
+/// the fork test procedure.
 #[ignore = "This is an integration test that requires devenv running"]
 #[test_log::test(tokio::test)]
 async fn process_blocks_simple_fork() {
@@ -300,12 +306,42 @@ async fn get_sbtc_balance(
 }
 
 #[derive(Deserialize, Clone, PartialEq, Eq, Debug)]
-pub struct GenerateBlockJson {
+struct GenerateBlockJson {
     pub hash: bitcoin::BlockHash,
 }
 
-/// Test what happens to a minted deposit if the sweep tx forks.
+async fn stacks_api_call<T>(path: &str) -> T
+where
+    T: DeserializeOwned,
+{
+    let client = Client::new();
+    client
+        .get(&format!("{DEVENV_STACKS_API}{path}"))
+        // .header("Accept", "application/json")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+/// Test what happens to a minted deposit if the deposit tx forks.
 /// This test relies on the integration env signers to do the actual work.
+///
+/// In the test, it first process a deposit end to end, then forks bitcoin and
+/// invalidate the deposit tx (spending the same vin), and then mine some
+/// bitcoin blocks to resume the stacks mining. Finally, it checks that the mint
+/// stacks tx is marked as failed.
+///
+/// This test is pretty flaky: frequently the final checks fails as the stacks
+/// miner gets stuck (either keep building on the wrong consensus hash, with the
+/// signers rejecting the block, or complains about a missing PoX anchor).
+/// Sometime, the test fails but after some time (re-enabling the bitcoin miner,
+/// or just generating some blocks) the stacks miner resume producing blocks
+/// (with the deposit minting tx fail as expected).
+/// Raising `POX_PREPARE_LENGTH` and `POX_REWARD_LENGTH` (in devenv config)
+/// seems to help avoiding the PoX issue.
 #[ignore = "This is an integration test that requires devenv running"]
 #[test_log::test(tokio::test)]
 async fn orphaned_deposit() {
@@ -378,11 +414,11 @@ async fn orphaned_deposit() {
         .expect("cannot create emily deposit");
 
     // Wait for the signers to process the deposit
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(10)).await;
     faucet.generate_block();
 
     // Then wait for the signers to mint the deposit
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(10)).await;
     faucet.generate_block();
 
     // Check that the recipient did get the expected sBTC
@@ -391,6 +427,18 @@ async fn orphaned_deposit() {
         .unwrap();
     dbg!(&balance);
     assert_ge!(balance.to_sat(), deposit_amount - max_fee);
+
+    // Fetch also the Stacks tx to check for its status after forking stacks.
+    let deposit_tx = &stacks_api_call::<serde_json::Value>("/extended/v2/addresses/SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS/transactions?limit=1&offset=0").await["results"][0]["tx"];
+
+    let deposit_tx_recipient = &deposit_tx["contract_call"]["function_args"][3]["repr"]
+        .as_str()
+        .unwrap()[1..];
+    let deposit_tx_status = deposit_tx["tx_status"].as_str().unwrap();
+    assert_eq!(deposit_tx_recipient, recipient.to_string());
+    assert_eq!(deposit_tx_status, "success");
+
+    let deposit_txid = deposit_tx["tx_id"].as_str().unwrap();
 
     // Now we fork:
     //  - we invalidate the deposit tx block via rpc
@@ -402,7 +450,7 @@ async fn orphaned_deposit() {
         depositor_utxo.clone(),
         // must be more than the package (deposit tx + sweep) in mempool to be
         // accepted as RBF
-        regtest::BITCOIN_CORE_FALLBACK_FEE * 100,
+        Amount::from_sat(deposit_amount - 1000),
     )
     .await;
     let invlidating_deposit_txid = rpc.send_raw_transaction(&invlidating_deposit_tx).unwrap();
@@ -416,9 +464,10 @@ async fn orphaned_deposit() {
     )
     .unwrap();
 
-    // Now we wait for a bit, generating some blocks
+    // Now we wait for a bit, generating some blocks to enable the stacks miner
+    // to catch up
     for _ in 0..5 {
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
         faucet.generate_block();
     }
 
@@ -428,4 +477,14 @@ async fn orphaned_deposit() {
         .unwrap();
     dbg!(&balance);
     assert_eq!(balance.to_sat(), 0);
+
+    // Ensure the previously confirmed tx now is now failed
+    let deposit_tx =
+        &stacks_api_call::<serde_json::Value>(&format!("/extended/v1/tx/{deposit_txid}")).await;
+    dbg!(deposit_tx);
+
+    let deposit_tx_status = deposit_tx["tx_status"].as_str().unwrap();
+    assert_eq!(deposit_tx_status, "abort_by_response");
+
+    return;
 }
