@@ -906,30 +906,30 @@ async fn create_deposit_handles_duplicates(status: Status) {
     assert_eq!(response.status, status);
 }
 
-#[test_case(Status::Pending, Status::Pending, "untrusted_api_key", true; "untrusted_key_pending_to_pending")]
-#[test_case(Status::Pending, Status::Accepted, "untrusted_api_key", false; "untrusted_key_pending_to_accepted")]
-#[test_case(Status::Pending, Status::Reprocessing, "untrusted_api_key", true; "untrusted_key_pending_to_reprocessing")]
-#[test_case(Status::Pending, Status::Confirmed, "untrusted_api_key", true; "untrusted_key_pending_to_confirmed")]
-#[test_case(Status::Pending, Status::Failed, "untrusted_api_key", true; "untrusted_key_pending_to_failed")]
-#[test_case(Status::Accepted, Status::Pending, "untrusted_api_key", true; "untrusted_key_accepted_to_pending")]
-#[test_case(Status::Failed, Status::Pending, "untrusted_api_key", true; "untrusted_key_failed_to_pending")]
-#[test_case(Status::Reprocessing, Status::Pending, "untrusted_api_key", true; "untrusted_key_reprocessing_to_pending")]
-#[test_case(Status::Confirmed, Status::Pending, "untrusted_api_key", true; "untrusted_key_confirmed_to_pending")]
-#[test_case(Status::Accepted, Status::Accepted, "untrusted_api_key", false; "untrusted_key_accepted_to_accepted")]
-#[test_case(Status::Failed, Status::Accepted, "untrusted_api_key", true; "untrusted_key_failed_to_accepted")]
-#[test_case(Status::Reprocessing, Status::Accepted, "untrusted_api_key", true; "untrusted_key_reprocessing_to_accepted")]
-#[test_case(Status::Confirmed, Status::Accepted, "untrusted_api_key", true; "untrusted_key_confirmed_to_accepted")]
-#[test_case(Status::Pending, Status::Accepted, "testApiKey", false; "trusted_key_pending_to_accepted")]
-#[test_case(Status::Pending, Status::Pending, "testApiKey", false; "trusted_key_pending_to_pending")]
-#[test_case(Status::Pending, Status::Reprocessing, "testApiKey", false; "trusted_key_pending_to_reprocessing")]
-#[test_case(Status::Pending, Status::Confirmed, "testApiKey", false; "trusted_key_pending_to_confirmed")]
-#[test_case(Status::Pending, Status::Failed, "testApiKey", false; "trusted_key_pending_to_failed")]
-#[test_case(Status::Confirmed, Status::Pending, "testApiKey", false; "trusted_key_confirmed_to_pending")]
+#[test_case(Status::Pending, Status::Pending, false, true; "untrusted_key_pending_to_pending")]
+#[test_case(Status::Pending, Status::Accepted, false, false; "untrusted_key_pending_to_accepted")]
+#[test_case(Status::Pending, Status::Reprocessing, false, true; "untrusted_key_pending_to_reprocessing")]
+#[test_case(Status::Pending, Status::Confirmed, false, true; "untrusted_key_pending_to_confirmed")]
+#[test_case(Status::Pending, Status::Failed, false, true; "untrusted_key_pending_to_failed")]
+#[test_case(Status::Accepted, Status::Pending, false, true; "untrusted_key_accepted_to_pending")]
+#[test_case(Status::Failed, Status::Pending, false, true; "untrusted_key_failed_to_pending")]
+#[test_case(Status::Reprocessing, Status::Pending, false, true; "untrusted_key_reprocessing_to_pending")]
+#[test_case(Status::Confirmed, Status::Pending, false, true; "untrusted_key_confirmed_to_pending")]
+#[test_case(Status::Accepted, Status::Accepted, false, false; "untrusted_key_accepted_to_accepted")]
+#[test_case(Status::Failed, Status::Accepted, false, true; "untrusted_key_failed_to_accepted")]
+#[test_case(Status::Reprocessing, Status::Accepted, false, true; "untrusted_key_reprocessing_to_accepted")]
+#[test_case(Status::Confirmed, Status::Accepted, false, true; "untrusted_key_confirmed_to_accepted")]
+#[test_case(Status::Pending, Status::Accepted, true, false; "trusted_key_pending_to_accepted")]
+#[test_case(Status::Pending, Status::Pending, true, false; "trusted_key_pending_to_pending")]
+#[test_case(Status::Pending, Status::Reprocessing, true, false; "trusted_key_pending_to_reprocessing")]
+#[test_case(Status::Pending, Status::Confirmed, true, false; "trusted_key_pending_to_confirmed")]
+#[test_case(Status::Pending, Status::Failed, true, false; "trusted_key_pending_to_failed")]
+#[test_case(Status::Confirmed, Status::Pending, true, false; "trusted_key_confirmed_to_pending")]
 #[tokio::test]
 async fn update_deposits_is_forbidden(
     previous_status: Status,
     new_status: Status,
-    api_key: &str,
+    is_sidecar: bool,
     is_forbidden: bool,
 ) {
     // the testing configuration has privileged access to all endpoints.
@@ -937,10 +937,6 @@ async fn update_deposits_is_forbidden(
 
     // the user configuration access depends on the api_key.
     let mut user_configuration = testing_configuration.clone();
-    user_configuration.api_key = Some(ApiKey {
-        prefix: None,
-        key: api_key.to_string(),
-    });
     // Arrange.
     // --------
     let bitcoin_tx_output_index = 0;
@@ -984,20 +980,37 @@ async fn update_deposits_is_forbidden(
             })));
         }
 
-        apis::deposit_api::update_deposits_sidecar(
-            &testing_configuration,
-            UpdateDepositsRequestBody {
-                deposits: vec![DepositUpdate {
-                    bitcoin_tx_output_index: bitcoin_tx_output_index,
-                    bitcoin_txid: bitcoin_txid.clone().into(),
-                    fulfillment,
-                    status: previous_status,
-                    status_message: "foo".into(),
-                }],
-            },
-        )
-        .await
-        .expect("Received an error after making a valid update deposit request api call.");
+        if is_sidecar {
+            apis::deposit_api::update_deposits_sidecar(
+                &testing_configuration,
+                UpdateDepositsRequestBody {
+                    deposits: vec![DepositUpdate {
+                        bitcoin_tx_output_index: bitcoin_tx_output_index,
+                        bitcoin_txid: bitcoin_txid.clone().into(),
+                        fulfillment,
+                        status: previous_status,
+                        status_message: "foo".into(),
+                    }],
+                },
+            )
+            .await
+            .expect("Received an error after making a valid update deposit request api call.");
+        } else {
+            apis::deposit_api::update_deposits_signer(
+                &testing_configuration,
+                UpdateDepositsRequestBody {
+                    deposits: vec![DepositUpdate {
+                        bitcoin_tx_output_index: bitcoin_tx_output_index,
+                        bitcoin_txid: bitcoin_txid.clone().into(),
+                        fulfillment,
+                        status: previous_status,
+                        status_message: "foo".into(),
+                    }],
+                },
+            )
+            .await
+            .expect("Received an error after making a valid update deposit request api call.");
+        }
     }
 
     let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
@@ -1013,29 +1026,58 @@ async fn update_deposits_is_forbidden(
         })));
     }
 
-    let response = apis::deposit_api::update_deposits_sidecar(
-        &user_configuration,
-        UpdateDepositsRequestBody {
-            deposits: vec![DepositUpdate {
-                bitcoin_tx_output_index: bitcoin_tx_output_index,
-                bitcoin_txid: bitcoin_txid.clone().into(),
-                fulfillment,
-                status: new_status,
-                status_message: "foo".into(),
-            }],
-        },
-    )
-    .await;
+    #[derive(Debug)]
+    enum DepositUpdateError {
+        Signer(apis::Error<apis::deposit_api::UpdateDepositsSignerError>),
+        Sidecar(apis::Error<apis::deposit_api::UpdateDepositsSidecarError>),
+    }
+
+    let response = if is_sidecar {
+        apis::deposit_api::update_deposits_sidecar(
+            &user_configuration,
+            UpdateDepositsRequestBody {
+                deposits: vec![DepositUpdate {
+                    bitcoin_tx_output_index: bitcoin_tx_output_index,
+                    bitcoin_txid: bitcoin_txid.clone().into(),
+                    fulfillment,
+                    status: new_status,
+                    status_message: "foo".into(),
+                }],
+            },
+        )
+        .await
+        .map_err(DepositUpdateError::Sidecar)
+    } else {
+        apis::deposit_api::update_deposits_signer(
+            &user_configuration,
+            UpdateDepositsRequestBody {
+                deposits: vec![DepositUpdate {
+                    bitcoin_tx_output_index: bitcoin_tx_output_index,
+                    bitcoin_txid: bitcoin_txid.clone().into(),
+                    fulfillment,
+                    status: new_status,
+                    status_message: "foo".into(),
+                }],
+            },
+        )
+        .await
+        .map_err(DepositUpdateError::Signer)
+    };
 
     if is_forbidden {
         assert!(response.is_err());
         match response.unwrap_err() {
-            testing_emily_client::apis::Error::ResponseError(ResponseContent {
-                status, ..
-            }) => {
+            DepositUpdateError::Signer(testing_emily_client::apis::Error::ResponseError(
+                ResponseContent { status, .. },
+            )) => {
                 assert_eq!(status, 403);
             }
-            e => panic!("Expected a 403 error, got {e}"),
+            DepositUpdateError::Sidecar(testing_emily_client::apis::Error::ResponseError(
+                ResponseContent { status, .. },
+            )) => {
+                assert_eq!(status, 403);
+            }
+            e => panic!("Expected a 403 error, got {:#?}", e),
         }
 
         let response = apis::deposit_api::get_deposit(

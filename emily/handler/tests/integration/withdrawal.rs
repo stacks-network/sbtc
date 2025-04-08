@@ -587,19 +587,35 @@ async fn update_withdrawals_is_forbidden(
             })));
         }
 
-        apis::withdrawal_api::update_withdrawals_sidecar(
-            &testing_configuration,
-            UpdateWithdrawalsRequestBody {
-                withdrawals: vec![WithdrawalUpdate {
-                    request_id,
-                    fulfillment,
-                    status: previous_status,
-                    status_message: "foo".into(),
-                }],
-            },
-        )
-        .await
-        .expect("Received an error after making a valid update withdrawal api call.");
+        if is_sidecar {
+            apis::withdrawal_api::update_withdrawals_sidecar(
+                &testing_configuration,
+                UpdateWithdrawalsRequestBody {
+                    withdrawals: vec![WithdrawalUpdate {
+                        request_id,
+                        fulfillment,
+                        status: previous_status,
+                        status_message: "foo".into(),
+                    }],
+                },
+            )
+            .await
+            .expect("Received an error after making a valid update withdrawal api call.");
+        } else {
+            apis::withdrawal_api::update_withdrawals_signer(
+                &testing_configuration,
+                UpdateWithdrawalsRequestBody {
+                    withdrawals: vec![WithdrawalUpdate {
+                        request_id,
+                        fulfillment,
+                        status: previous_status,
+                        status_message: "foo".into(),
+                    }],
+                },
+            )
+            .await
+            .expect("Received an error after making a valid update withdrawal api call.");
+        }
     }
 
     let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
