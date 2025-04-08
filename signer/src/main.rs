@@ -241,9 +241,9 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     // Limit the number of signers to the maximum number of signer pubkeys we
     // can support. Note that this value is used as a base value for swarm
     // connection limit calculations.
-    let num_signers = config
-        .signer
-        .bootstrap_signing_set()
+    let num_signers = ctx
+        .state()
+        .current_signer_set()
         .len()
         .try_into()
         .unwrap_or(signer::MAX_KEYS);
