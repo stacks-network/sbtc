@@ -33,6 +33,12 @@ use tower_http::trace::TraceLayer;
 use tracing::Instrument;
 use tracing::Span;
 
+// This is how many seconds the P2P swarm will wait before attempting to
+// bootstrap (i.e. connect to other peers). Three seconds is a sane default
+// value, giving the swarm a few seconds to start up and bind listener(s)
+// before proceeding.
+const INITIAL_BOOTSTRAP_DELAY_SECS: u64 = 3;
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum LogOutputFormat {
     Json,
@@ -241,12 +247,6 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
         .len()
         .try_into()
         .unwrap_or(signer::MAX_KEYS);
-
-    // This is how many seconds the swarm will wait before attempting to
-    // bootstrap (i.e. connect to other peers). Three seconds is a sane default
-    // value, giving the swarm a few seconds to start up and bind listener(s)
-    // before proceeding.
-    const INITIAL_BOOTSTRAP_DELAY_SECS: u64 = 3;
 
     // Build the swarm.
     let mut swarm = SignerSwarmBuilder::new(&config.signer.private_key)
