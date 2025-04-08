@@ -510,7 +510,7 @@ pub async fn update_deposits_signer(
 #[utoipa::path(
     put,
     operation_id = "updateDepositsSidecar",
-    path = "/deposit/private",
+    path = "/deposit_private",
     tag = "deposit",
     request_body = UpdateDepositsRequestBody,
     responses(

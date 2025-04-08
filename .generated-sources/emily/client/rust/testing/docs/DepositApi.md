@@ -10,7 +10,7 @@ Method | HTTP request | Description
 [**get_deposits_for_recipient**](DepositApi.md#get_deposits_for_recipient) | **GET** /deposit/recipient/{recipient} | Get deposits by recipient handler.
 [**get_deposits_for_reclaim_pubkeys**](DepositApi.md#get_deposits_for_reclaim_pubkeys) | **GET** /deposit/reclaim-pubkeys/{reclaimPubkeys} | Get deposits by recipient handler.
 [**get_deposits_for_transaction**](DepositApi.md#get_deposits_for_transaction) | **GET** /deposit/{txid} | Get deposits for transaction handler.
-[**update_deposits_sidecar**](DepositApi.md#update_deposits_sidecar) | **PUT** /deposit/private | Update deposits handler.
+[**update_deposits_sidecar**](DepositApi.md#update_deposits_sidecar) | **PUT** /deposit_private | Update deposits handler.
 [**update_deposits_signer**](DepositApi.md#update_deposits_signer) | **PUT** /deposit | Update deposits handler.
 
 

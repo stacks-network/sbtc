@@ -95,7 +95,7 @@ fn update_withdrawals_sidecar(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .map(move || context.clone())
-        .and(warp::path("withdrawal/private"))
+        .and(warp::path("withdrawal_private"))
         .and(warp::put())
         .and(warp::body::json())
         .then(handlers::withdrawal::update_withdrawals_sidecar)

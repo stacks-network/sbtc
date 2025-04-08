@@ -9,7 +9,7 @@ Method | HTTP request | Description
 [**get_withdrawals**](WithdrawalApi.md#get_withdrawals) | **GET** /withdrawal | Get withdrawals handler.
 [**get_withdrawals_for_recipient**](WithdrawalApi.md#get_withdrawals_for_recipient) | **GET** /withdrawal/recipient/{recipient} | Get withdrawals by recipient handler.
 [**get_withdrawals_for_sender**](WithdrawalApi.md#get_withdrawals_for_sender) | **GET** /withdrawal/sender/{sender} | Get withdrawals by sender handler.
-[**update_withdrawals_sidecar**](WithdrawalApi.md#update_withdrawals_sidecar) | **PUT** /withdrawal/private | Update withdrawals handler.
+[**update_withdrawals_sidecar**](WithdrawalApi.md#update_withdrawals_sidecar) | **PUT** /withdrawal_private | Update withdrawals handler.
 [**update_withdrawals_signer**](WithdrawalApi.md#update_withdrawals_signer) | **PUT** /withdrawal | Update withdrawals handler.
 
 

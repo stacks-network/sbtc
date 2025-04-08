@@ -979,7 +979,7 @@ async fn update_deposits_is_forbidden(
             })));
         }
 
-        if is_sidecar {
+
             apis::deposit_api::update_deposits_sidecar(
                 &testing_configuration,
                 UpdateDepositsRequestBody {
@@ -994,22 +994,7 @@ async fn update_deposits_is_forbidden(
             )
             .await
             .expect("Received an error after making a valid update deposit request api call.");
-        } else {
-            apis::deposit_api::update_deposits_signer(
-                &testing_configuration,
-                UpdateDepositsRequestBody {
-                    deposits: vec![DepositUpdate {
-                        bitcoin_tx_output_index: bitcoin_tx_output_index,
-                        bitcoin_txid: bitcoin_txid.clone().into(),
-                        fulfillment,
-                        status: previous_status,
-                        status_message: "foo".into(),
-                    }],
-                },
-            )
-            .await
-            .expect("Received an error after making a valid update deposit request api call.");
-        }
+       
     }
 
     let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;

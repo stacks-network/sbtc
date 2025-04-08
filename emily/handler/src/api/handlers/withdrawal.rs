@@ -398,7 +398,7 @@ pub async fn update_withdrawals_signer(
 #[utoipa::path(
     put,
     operation_id = "updateWithdrawalsSidecar",
-    path = "/withdrawal/private",
+    path = "/withdrawal_private",
     tag = "withdrawal",
     request_body = UpdateWithdrawalsRequestBody,
     responses(

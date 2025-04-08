@@ -7,7 +7,7 @@ Method | HTTP request | Description
 [**chainstate_height_options**](CorsApi.md#chainstate_height_options) | **OPTIONS** /chainstate/{height} | CORS support
 [**chainstate_options**](CorsApi.md#chainstate_options) | **OPTIONS** /chainstate | CORS support
 [**deposit_options**](CorsApi.md#deposit_options) | **OPTIONS** /deposit | CORS support
-[**deposit_private_options**](CorsApi.md#deposit_private_options) | **OPTIONS** /deposit/private | CORS support
+[**deposit_private_options**](CorsApi.md#deposit_private_options) | **OPTIONS** /deposit_private | CORS support
 [**deposit_recipient_recipient_options**](CorsApi.md#deposit_recipient_recipient_options) | **OPTIONS** /deposit/recipient/{recipient} | CORS support
 [**deposit_reclaim_pubkeys_reclaim_pubkeys_options**](CorsApi.md#deposit_reclaim_pubkeys_reclaim_pubkeys_options) | **OPTIONS** /deposit/reclaim-pubkeys/{reclaimPubkeys} | CORS support
 [**deposit_txid_index_options**](CorsApi.md#deposit_txid_index_options) | **OPTIONS** /deposit/{txid}/{index} | CORS support
@@ -19,7 +19,7 @@ Method | HTTP request | Description
 [**testing_wipe_options**](CorsApi.md#testing_wipe_options) | **OPTIONS** /testing/wipe | CORS support
 [**withdrawal_id_options**](CorsApi.md#withdrawal_id_options) | **OPTIONS** /withdrawal/{id} | CORS support
 [**withdrawal_options**](CorsApi.md#withdrawal_options) | **OPTIONS** /withdrawal | CORS support
-[**withdrawal_private_options**](CorsApi.md#withdrawal_private_options) | **OPTIONS** /withdrawal/private | CORS support
+[**withdrawal_private_options**](CorsApi.md#withdrawal_private_options) | **OPTIONS** /withdrawal_private | CORS support
 [**withdrawal_recipient_recipient_options**](CorsApi.md#withdrawal_recipient_recipient_options) | **OPTIONS** /withdrawal/recipient/{recipient} | CORS support
 [**withdrawal_sender_sender_options**](CorsApi.md#withdrawal_sender_sender_options) | **OPTIONS** /withdrawal/sender/{sender} | CORS support
 

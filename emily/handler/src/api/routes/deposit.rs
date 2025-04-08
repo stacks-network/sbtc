@@ -108,7 +108,7 @@ fn update_deposits_sidecar(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .map(move || context.clone())
-        .and(warp::path!("deposit/private"))
+        .and(warp::path!("deposit_private"))
         .and(warp::put())
         .and(warp::body::json())
         .then(handlers::deposit::update_deposits_sidecar)
