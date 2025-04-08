@@ -11,7 +11,6 @@ const TEST_STACK_PROPS: EmilyStackProps = {
         account: "account",
         region: "region",
     },
-    trustedReorgApiKey: "testApiKey",
     deployerAddress: "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"
 }
 

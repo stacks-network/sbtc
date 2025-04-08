@@ -12,6 +12,5 @@ new EmilyStack(app, 'EmilyStack', {
         account: EmilyStackUtils.getAwsAccount(),
         region: EmilyStackUtils.getAwsRegion()
     },
-    trustedReorgApiKey: EmilyStackUtils.getTrustedReorgApiKey(),
     deployerAddress: EmilyStackUtils.getDeployerAddress(),
 });

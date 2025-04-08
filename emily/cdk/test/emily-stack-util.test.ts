@@ -16,7 +16,6 @@ describe('EmilyStackUtils Test', () => {
                 account: "testAwsAccount",
                 region: "testAwsRegion",
             },
-            trustedReorgApiKey: "testApiKey",
             deployerAddress: "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS",
         }
         const resourceName: string = EmilyStackUtils

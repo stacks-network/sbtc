@@ -52,11 +52,6 @@ export class EmilyStackUtils {
     private static lambdaGitIdentifier?: string;
 
     /*
-     * The trusted reorg API key.
-     */
-    private static trustedReorgApiKey?: string;
-
-    /*
      * The address of the deployer of the sBTC smart contracts.
      */
     private static deployerAddress?: string;

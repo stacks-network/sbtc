@@ -334,17 +334,15 @@ pub async fn update_withdrawals_signer(
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
-
         // Signers are only allowed to update withdrawals to the accepted state.
-            let is_unauthorized = body
-                .withdrawals
-                .iter()
-                .any(|withdrawal| withdrawal.status != Status::Accepted);
+        let is_unauthorized = body
+            .withdrawals
+            .iter()
+            .any(|withdrawal| withdrawal.status != Status::Accepted);
 
-            if is_unauthorized {
-                return Err(Error::Forbidden);
-            }
-        
+        if is_unauthorized {
+            return Err(Error::Forbidden);
+        }
 
         // Validate request.
         let validated_request: ValidatedUpdateWithdrawalRequest =
@@ -359,20 +357,16 @@ pub async fn update_withdrawals_signer(
             let request_id = update.request_id;
             debug!(request_id, "updating withdrawal");
 
-            let updated_withdrawal = accessors::pull_and_update_withdrawal_with_retry(
-                &context,
-                update,
-                15,
-                false,
-            )
-            .await
-            .inspect_err(|error| {
-                tracing::error!(
-                    request_id,
-                    %error,
-                    "failed to update withdrawal",
-                );
-            })?;
+            let updated_withdrawal =
+                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15, false)
+                    .await
+                    .inspect_err(|error| {
+                        tracing::error!(
+                            request_id,
+                            %error,
+                            "failed to update withdrawal",
+                        );
+                    })?;
 
             let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
                 // This should never happen, because the withdrawal was
@@ -449,20 +443,16 @@ pub async fn update_withdrawals_sidecar(
             let request_id = update.request_id;
             debug!(request_id, "updating withdrawal");
 
-            let updated_withdrawal = accessors::pull_and_update_withdrawal_with_retry(
-                &context,
-                update,
-                15,
-                true,
-            )
-            .await
-            .inspect_err(|error| {
-                tracing::error!(
-                    request_id,
-                    %error,
-                    "failed to update withdrawal",
-                );
-            })?;
+            let updated_withdrawal =
+                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15, true)
+                    .await
+                    .inspect_err(|error| {
+                        tracing::error!(
+                            request_id,
+                            %error,
+                            "failed to update withdrawal",
+                        );
+                    })?;
 
             let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
                 // This should never happen, because the withdrawal was
