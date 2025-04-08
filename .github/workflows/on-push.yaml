@@ -1,6 +1,5 @@
 name: Push & PR
 on:
-  push:
   pull_request:
     types: [opened, synchronize, reopened]
 
