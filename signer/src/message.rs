@@ -10,7 +10,6 @@ use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksBlockHash;
-use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
 #[derive(Debug, Clone, PartialEq)]
@@ -160,9 +159,6 @@ pub struct SignerWithdrawalDecision {
     pub request_id: u64,
     /// ID of the Stacks block containing the request.
     pub block_hash: StacksBlockHash,
-    /// The stacks transaction ID that lead to the creation of the
-    /// withdrawal request.
-    pub txid: StacksTxId,
     /// Whether the signer has accepted the deposit request.
     pub accepted: bool,
 }
@@ -172,7 +168,6 @@ impl From<model::WithdrawalSigner> for SignerWithdrawalDecision {
         Self {
             request_id: signer.request_id,
             block_hash: signer.block_hash,
-            txid: signer.txid,
             accepted: signer.is_accepted,
         }
     }

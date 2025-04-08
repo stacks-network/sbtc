@@ -166,7 +166,6 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     id: QualifiedRequestId {
 	    request_id: 2,
-	    txid: StacksTxId::from([0; 32]),
 	    block_hash: StacksBlockHash::from([0; 32]),
     },
     outpoint: bitcoin::OutPoint::null(),
@@ -185,7 +184,6 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     id: QualifiedRequestId {
 	    request_id: 2,
-	    txid: StacksTxId::from([0; 32]),
 	    block_hash: StacksBlockHash::from([0; 32]),
     },
     signer_bitmap: 0,
@@ -378,7 +376,6 @@ async fn is_withdrawal_completed_rejection_works() {
         id: QualifiedRequestId {
             request_id: 1,
             block_hash: StacksBlockHash::from([0; 32]),
-            txid: StacksTxId::from([0; 32]),
         },
         signer_bitmap: 0,
         deployer: *testing::wallet::WALLET.0.address(),

@@ -176,7 +176,6 @@ impl AsContractCall for InitiateWithdrawalRequest {
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
     id: QualifiedRequestId {
 	    request_id: 0,
-	    txid: StacksTxId::from([0; 32]),
 	    block_hash: StacksBlockHash::from([0; 32]),
     },
     outpoint: bitcoin::OutPoint::null(),
@@ -188,9 +187,8 @@ impl AsContractCall for InitiateWithdrawalRequest {
 }); "accept-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
     id: QualifiedRequestId {
-	request_id: 0,
-	txid: StacksTxId::from([0; 32]),
-	block_hash: StacksBlockHash::from([0; 32]),
+	    request_id: 0,
+	    block_hash: StacksBlockHash::from([0; 32]),
     },
     signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
@@ -1575,7 +1573,6 @@ async fn fetching_withdrawal_signer_decisions() {
         assert!(withdrawal_decisions.iter().any(|decision| {
             decision.block_hash == withdrawal.block_hash
                 && decision.request_id == withdrawal.request_id
-                && decision.txid == withdrawal.txid
                 && decision.signer_pub_key == *signer_pub_key
         }));
     }
@@ -1607,34 +1604,29 @@ async fn fetching_withdrawal_request_votes() {
 
     store.write_encrypted_dkg_shares(&shares).await.unwrap();
 
-    let txid: StacksTxId = fake::Faker.fake_with_rng(&mut rng);
     let block_hash: StacksBlockHash = fake::Faker.fake_with_rng(&mut rng);
     let request_id = 17;
 
     let signer_decisions = [
         WithdrawalSigner {
-            txid,
             block_hash,
             request_id,
             signer_pub_key: shares.signer_set_public_keys[0],
             is_accepted: true,
         },
         WithdrawalSigner {
-            txid,
             block_hash,
             request_id,
             signer_pub_key: shares.signer_set_public_keys[1],
             is_accepted: false,
         },
         WithdrawalSigner {
-            txid,
             block_hash,
             request_id,
             signer_pub_key: shares.signer_set_public_keys[2],
             is_accepted: true,
         },
         WithdrawalSigner {
-            txid,
             block_hash,
             request_id,
             signer_pub_key: shares.signer_set_public_keys[3],
@@ -1651,7 +1643,6 @@ async fn fetching_withdrawal_request_votes() {
             ..fake::Faker.fake_with_rng::<StacksBlock, _>(&mut rng)
         };
         let req = model::WithdrawalRequest {
-            txid,
             block_hash,
             request_id,
             ..fake::Faker.fake_with_rng::<model::WithdrawalRequest, _>(&mut rng)
@@ -1665,7 +1656,7 @@ async fn fetching_withdrawal_request_votes() {
             .unwrap();
     }
 
-    let id = QualifiedRequestId { txid, block_hash, request_id };
+    let id = QualifiedRequestId { block_hash, request_id };
     // Let's make sure the identifiers match, doesn't hurt too.
     assert_eq!(id, signer_decisions[0].qualified_id());
 
@@ -2240,7 +2231,6 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     };
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
-        stacks_txid: withdrawal_request.txid,
         stacks_block_hash: withdrawal_request.block_hash,
         bitcoin_chain_tip: bitcoin_block.block_hash,
         ..Faker.fake_with_rng(&mut rng)
@@ -2640,7 +2630,6 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
     };
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
-        stacks_txid: withdrawal_request.txid,
         stacks_block_hash: withdrawal_request.block_hash,
         bitcoin_chain_tip: bitcoin_block.block_hash,
         ..Faker.fake_with_rng(&mut rng)
@@ -3054,7 +3043,6 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
     };
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
-        stacks_txid: withdrawal_request.txid,
         stacks_block_hash: withdrawal_request.block_hash,
         bitcoin_chain_tip: bitcoin_block.block_hash,
         ..Faker.fake_with_rng(&mut rng)
@@ -3771,7 +3759,6 @@ async fn withdrawal_report_with_no_withdrawal_request_or_no_block() {
     // do not know about. In this case no report should be returned.
     let qualified_id = QualifiedRequestId {
         request_id: Faker.fake_with_rng::<u32, _>(&mut rng) as u64,
-        txid: Faker.fake_with_rng(&mut rng),
         block_hash: stacks_chain_tip,
     };
 
@@ -3885,7 +3872,6 @@ async fn withdrawal_report_with_no_withdrawal_votes() {
     let withdrawal_decision = WithdrawalSigner {
         request_id: qualified_id.request_id,
         block_hash: qualified_id.block_hash,
-        txid: qualified_id.txid,
         signer_pub_key: *signer_public_key,
         is_accepted: true,
     };
@@ -4066,7 +4052,6 @@ async fn withdrawal_report_with_withdrawal_request_fulfilled() {
     // place the sweep on the bitcoin chain tip.
     let swept_output = BitcoinWithdrawalOutput {
         request_id: qualified_id.request_id,
-        stacks_txid: qualified_id.txid,
         stacks_block_hash: qualified_id.block_hash,
         bitcoin_chain_tip,
         ..Faker.fake_with_rng(&mut rng)
@@ -4191,7 +4176,6 @@ async fn withdrawal_report_with_withdrawal_request_swept_but_swept_reorged() {
     // place the sweep on the bitcoin chain tip.
     let swept_output = BitcoinWithdrawalOutput {
         request_id: qualified_id.request_id,
-        stacks_txid: qualified_id.txid,
         stacks_block_hash: qualified_id.block_hash,
         bitcoin_chain_tip: bitcoin_chain_tip_ref.block_hash,
         ..Faker.fake_with_rng(&mut rng)
@@ -4351,7 +4335,6 @@ async fn withdrawal_report_with_withdrawal_request_swept_but_swept_reorged2() {
     // place the sweep on the bitcoin chain tip.
     let swept_output = BitcoinWithdrawalOutput {
         request_id: qualified_id.request_id,
-        stacks_txid: qualified_id.txid,
         stacks_block_hash: qualified_id.block_hash,
         bitcoin_chain_tip: bitcoin_chain_tip.block_hash,
         ..Faker.fake_with_rng(&mut rng)
@@ -4501,7 +4484,6 @@ async fn withdrawal_report_with_withdrawal_request_confirmed() {
     let withdrawal_decision = WithdrawalSigner {
         request_id: qualified_id.request_id,
         block_hash: qualified_id.block_hash,
-        txid: qualified_id.txid,
         signer_pub_key: *signer_public_key,
         is_accepted: false,
     };
@@ -5680,7 +5662,6 @@ async fn is_withdrawal_inflight_catches_withdrawals_with_rows_in_table() {
     let id = QualifiedRequestId {
         request_id: 234,
         block_hash: Faker.fake_with_rng(&mut rng),
-        txid: Faker.fake_with_rng(&mut rng),
     };
 
     assert!(!db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
@@ -5688,7 +5669,6 @@ async fn is_withdrawal_inflight_catches_withdrawals_with_rows_in_table() {
     let bitcoin_txid: model::BitcoinTxId = Faker.fake_with_rng(&mut rng);
     let output = BitcoinWithdrawalOutput {
         request_id: id.request_id,
-        stacks_txid: id.txid,
         stacks_block_hash: id.block_hash,
         bitcoin_chain_tip: chain_tip,
         bitcoin_txid,
@@ -5752,7 +5732,6 @@ async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
     let id = QualifiedRequestId {
         request_id: 234,
         block_hash: Faker.fake_with_rng(&mut rng),
-        txid: Faker.fake_with_rng(&mut rng),
     };
 
     assert!(!db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
@@ -5763,7 +5742,6 @@ async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
 
     let output = BitcoinWithdrawalOutput {
         request_id: id.request_id,
-        stacks_txid: id.txid,
         stacks_block_hash: id.block_hash,
         bitcoin_chain_tip: chain_tip,
         bitcoin_txid: bitcoin_txid3,
@@ -5861,7 +5839,6 @@ async fn is_withdrawal_active_for_considered_withdrawal() {
 
     let output = BitcoinWithdrawalOutput {
         request_id: qualified_id.request_id,
-        stacks_txid: qualified_id.txid,
         stacks_block_hash: qualified_id.block_hash,
         bitcoin_chain_tip: chain_tip.block_hash,
         is_valid_tx: true,
@@ -6119,7 +6096,6 @@ mod get_pending_accepted_withdrawal_requests {
             let signer = model::WithdrawalSigner {
                 request_id: request.request_id,
                 block_hash: request.block_hash,
-                txid: request.txid,
                 signer_pub_key: Faker.fake(),
                 is_accepted: *vote,
             };
@@ -6206,7 +6182,6 @@ mod get_pending_accepted_withdrawal_requests {
             bitcoin_txid: bitcoin_sweep_tx.txid,
             bitcoin_chain_tip: *at_bitcoin_block,
             is_valid_tx: true,
-            stacks_txid: request.txid,
             stacks_block_hash: request.block_hash,
             request_id: request.request_id,
             validation_result: WithdrawalValidationResult::Ok,

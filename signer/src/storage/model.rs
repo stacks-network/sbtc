@@ -320,7 +320,6 @@ impl WithdrawalRequest {
     pub fn qualified_id(&self) -> QualifiedRequestId {
         QualifiedRequestId {
             request_id: self.request_id,
-            txid: self.txid,
             block_hash: self.block_hash,
         }
     }
@@ -333,9 +332,6 @@ pub struct WithdrawalSigner {
     /// Request ID of the withdrawal request.
     #[sqlx(try_from = "i64")]
     pub request_id: u64,
-    /// The stacks transaction ID that lead to the creation of the
-    /// withdrawal request.
-    pub txid: StacksTxId,
     /// Stacks block hash of the withdrawal request.
     pub block_hash: StacksBlockHash,
     /// Public key of the signer.
@@ -349,7 +345,6 @@ impl WithdrawalSigner {
     pub fn qualified_id(&self) -> QualifiedRequestId {
         QualifiedRequestId {
             request_id: self.request_id,
-            txid: self.txid,
             block_hash: self.block_hash,
         }
     }
@@ -496,7 +491,6 @@ impl SweptWithdrawalRequest {
     pub fn qualified_id(&self) -> QualifiedRequestId {
         QualifiedRequestId {
             request_id: self.request_id,
-            txid: self.txid,
             block_hash: self.block_hash,
         }
     }
@@ -708,8 +702,6 @@ pub struct QualifiedRequestId {
     /// The ID that was generated in the clarity contract call for the
     /// withdrawal request.
     pub request_id: u64,
-    /// The txid that generated the request.
-    pub txid: StacksTxId,
     /// The Stacks block ID that includes the transaction that generated
     /// the request.
     pub block_hash: StacksBlockHash,
@@ -1179,9 +1171,6 @@ pub struct BitcoinWithdrawalOutput {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub request_id: u64,
-    /// The stacks transaction ID that lead to the creation of the
-    /// withdrawal request.
-    pub stacks_txid: StacksTxId,
     /// Stacks block ID of the block that includes the transaction
     /// associated with this withdrawal request.
     pub stacks_block_hash: StacksBlockHash,

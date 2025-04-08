@@ -437,7 +437,6 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
         assert_eq!(row.validation_result, WithdrawalValidationResult::Ok);
         assert_eq!(row.request_id, withdrawal.request.request_id);
         assert_eq!(row.stacks_block_hash, withdrawal.request.block_hash);
-        assert_eq!(row.stacks_txid, withdrawal.request.txid);
         assert_eq!(row.output_index, output_index as u32 + 2);
         assert!(row.is_valid_tx);
     }
@@ -546,7 +545,6 @@ async fn swept_withdrawals_fail_validation() {
         );
         assert_eq!(row.request_id, withdrawal.request.request_id);
         assert_eq!(row.stacks_block_hash, withdrawal.request.block_hash);
-        assert_eq!(row.stacks_txid, withdrawal.request.txid);
         assert_eq!(row.output_index, output_index as u32 + 2);
         assert!(!row.is_valid_tx);
     }

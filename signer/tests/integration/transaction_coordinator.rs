@@ -4142,7 +4142,6 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
             bitcoin_chain_tip: bitcoin_chain_tip.block_hash,
             output_index: outpoint.vout,
             request_id: request.request_id,
-            stacks_txid: request.txid,
             stacks_block_hash: request.block_hash,
             // We don't care about validation, as the majority of signers may
             // have validated it, so we err towards checking more rather than
@@ -4494,7 +4493,6 @@ mod get_eligible_pending_withdrawal_requests {
             let signer = WithdrawalSigner {
                 request_id: request.request_id,
                 block_hash: request.block_hash,
-                txid: request.txid,
                 signer_pub_key,
                 is_accepted,
             };

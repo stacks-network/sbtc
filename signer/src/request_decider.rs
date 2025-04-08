@@ -347,7 +347,6 @@ where
             request_id: withdrawal_request.request_id,
             block_hash: withdrawal_request.block_hash,
             accepted: is_accepted,
-            txid: withdrawal_request.txid,
         };
 
         let signer_decision = WithdrawalSigner {
@@ -355,7 +354,6 @@ where
             block_hash: withdrawal_request.block_hash,
             signer_pub_key: self.signer_public_key(),
             is_accepted,
-            txid: withdrawal_request.txid,
         };
 
         self.context
@@ -504,7 +502,6 @@ where
             block_hash: decision.block_hash,
             signer_pub_key,
             is_accepted: decision.accepted,
-            txid: decision.txid,
         };
 
         // TODO: we need to check to see if we have the withdrawal request

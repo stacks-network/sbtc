@@ -381,7 +381,7 @@ impl TestSweepSetup {
 
         let withdrawal_request = model::WithdrawalRequest {
             request_id: self.withdrawal_request.request_id,
-            txid: self.withdrawal_request.txid,
+            txid: Faker.fake_with_rng(&mut OsRng),
             block_hash: self.withdrawal_request.block_hash,
             recipient: self.withdrawal_request.clone().script_pubkey,
             amount: self.withdrawal_request.amount,
@@ -1075,7 +1075,6 @@ impl TestSweepSetup2 {
         for (index, withdrawal) in self.withdrawals.iter().enumerate() {
             let swept_output = BitcoinWithdrawalOutput {
                 request_id: withdrawal.request.request_id,
-                stacks_txid: withdrawal.request.txid,
                 stacks_block_hash: withdrawal.request.block_hash,
                 bitcoin_chain_tip: sweep.block_hash.into(),
                 is_valid_tx: true,
@@ -1184,7 +1183,6 @@ impl TestSweepSetup2 {
                 .map(|(signer_pub_key, is_rejected)| model::WithdrawalSigner {
                     request_id: withdrawal.request.request_id,
                     block_hash: withdrawal.request.block_hash,
-                    txid: withdrawal.request.txid,
                     signer_pub_key,
                     is_accepted: !is_rejected,
                 })
@@ -1205,7 +1203,7 @@ impl TestSweepSetup2 {
         for withdrawal in self.withdrawals.iter() {
             let withdrawal_request = model::WithdrawalRequest {
                 request_id: withdrawal.request.request_id,
-                txid: withdrawal.request.txid,
+                txid: Faker.fake_with_rng(&mut OsRng),
                 block_hash: withdrawal.request.block_hash,
                 recipient: withdrawal.request.clone().script_pubkey,
                 amount: withdrawal.request.amount,

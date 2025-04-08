@@ -755,7 +755,6 @@ impl fake::Dummy<fake::Faker> for QualifiedRequestId {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         QualifiedRequestId {
             request_id: config.fake_with_rng::<u32, _>(rng) as u64,
-            txid: config.fake_with_rng(rng),
             block_hash: config.fake_with_rng(rng),
         }
     }

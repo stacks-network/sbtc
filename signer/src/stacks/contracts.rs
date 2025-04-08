@@ -1562,7 +1562,6 @@ mod tests {
 
     use crate::config::NetworkKind;
     use crate::storage::model::StacksBlockHash;
-    use crate::storage::model::StacksTxId;
 
     use super::*;
 
@@ -1590,7 +1589,6 @@ mod tests {
         let call = AcceptWithdrawalV1 {
             id: QualifiedRequestId {
                 request_id: 43,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             outpoint: OutPoint::null(),
@@ -1611,7 +1609,6 @@ mod tests {
         let call = RejectWithdrawalV1 {
             id: QualifiedRequestId {
                 request_id: 1,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             signer_bitmap: 0,

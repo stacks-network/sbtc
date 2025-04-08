@@ -488,7 +488,6 @@ impl WithdrawData {
                         .map(|signer_pub_key| model::WithdrawalSigner {
                             request_id: withdraw_request.request_id,
                             block_hash: withdraw_request.block_hash,
-                            txid: withdraw_request.txid,
                             signer_pub_key,
                             is_accepted: fake::Faker.fake_with_rng(rng),
                         })

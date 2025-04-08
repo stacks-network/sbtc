@@ -362,7 +362,7 @@ impl From<SignerWithdrawalDecision> for proto::SignerWithdrawalDecision {
             request_id: value.request_id,
             block_id: Some(value.block_hash.into()),
             accepted: value.accepted,
-            txid: Some(value.txid.into()),
+            txid: None,
         }
     }
 }
@@ -374,7 +374,6 @@ impl TryFrom<proto::SignerWithdrawalDecision> for SignerWithdrawalDecision {
             request_id: value.request_id,
             block_hash: StacksBlockHash::try_from(value.block_id.required()?)?,
             accepted: value.accepted,
-            txid: value.txid.required()?.try_into()?,
         })
     }
 }
@@ -1156,7 +1155,7 @@ impl From<QualifiedRequestId> for proto::QualifiedRequestId {
     fn from(value: QualifiedRequestId) -> Self {
         proto::QualifiedRequestId {
             request_id: value.request_id,
-            txid: Some(value.txid.into()),
+            txid: None,
             block_hash: Some(value.block_hash.into()),
         }
     }
@@ -1167,7 +1166,6 @@ impl TryFrom<proto::QualifiedRequestId> for QualifiedRequestId {
     fn try_from(value: proto::QualifiedRequestId) -> Result<Self, Self::Error> {
         Ok(QualifiedRequestId {
             request_id: value.request_id,
-            txid: StacksTxId::try_from(value.txid.required()?)?,
             block_hash: value.block_hash.required()?.try_into()?,
         })
     }

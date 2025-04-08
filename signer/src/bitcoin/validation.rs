@@ -465,7 +465,6 @@ impl BitcoinTxValidationData {
                 bitcoin_chain_tip: self.chain_tip,
                 output_index: output_index as u32 + 2,
                 request_id: report.id.request_id,
-                stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
                 validation_result: report.validate(
                     self.chain_tip_height,
@@ -1012,7 +1011,6 @@ impl WithdrawalRequestReport {
     fn to_withdrawal_request(&self, votes: &SignerVotes) -> WithdrawalRequest {
         WithdrawalRequest {
             request_id: self.id.request_id,
-            txid: self.id.txid,
             block_hash: self.id.block_hash,
             amount: self.amount,
             max_fee: self.max_fee,
@@ -1039,7 +1037,6 @@ mod tests {
     use crate::context::RollingWithdrawalLimits;
     use crate::context::SbtcLimits;
     use crate::storage::model::StacksBlockHash;
-    use crate::storage::model::StacksTxId;
 
     use super::*;
 
@@ -1450,7 +1447,6 @@ mod tests {
             // This does not matter during validation.
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             // This is the only acceptable value.
@@ -1478,7 +1474,6 @@ mod tests {
             status: WithdrawalRequestStatus::Confirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
@@ -1496,7 +1491,6 @@ mod tests {
             status: WithdrawalRequestStatus::Confirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
@@ -1514,7 +1508,6 @@ mod tests {
             status: WithdrawalRequestStatus::Confirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
@@ -1532,7 +1525,6 @@ mod tests {
             status: WithdrawalRequestStatus::Confirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
@@ -1550,7 +1542,6 @@ mod tests {
             status: WithdrawalRequestStatus::Confirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: None,
@@ -1568,7 +1559,6 @@ mod tests {
             status: WithdrawalRequestStatus::Confirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
@@ -1589,7 +1579,6 @@ mod tests {
             }),
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
@@ -1607,7 +1596,6 @@ mod tests {
             status: WithdrawalRequestStatus::Confirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
@@ -1625,7 +1613,6 @@ mod tests {
             status: WithdrawalRequestStatus::Confirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(false),
@@ -1643,7 +1630,6 @@ mod tests {
             status: WithdrawalRequestStatus::Unconfirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
@@ -1680,7 +1666,6 @@ mod tests {
             status: WithdrawalRequestStatus::Confirmed,
             id: QualifiedRequestId {
                 request_id: 0,
-                txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
@@ -1724,12 +1709,10 @@ mod tests {
                 withdrawals: vec![
                     QualifiedRequestId {
                         request_id: 0,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
                         request_id: 1,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([2; 32]),
                     },
                 ],
@@ -1753,12 +1736,10 @@ mod tests {
                 withdrawals: vec![
                     QualifiedRequestId {
                         request_id: 0,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
                         request_id: 1,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([2; 32]),
                     },
                 ],
@@ -1782,12 +1763,10 @@ mod tests {
                 withdrawals: vec![
                     QualifiedRequestId {
                         request_id: 0,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
                         request_id: 1,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([2; 32]),
                     },
                 ],
@@ -1811,12 +1790,10 @@ mod tests {
                 withdrawals: vec![
                     QualifiedRequestId {
                         request_id: 0,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
                         request_id: 1,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([2; 32]),
                     },
                 ],
@@ -1840,12 +1817,10 @@ mod tests {
                 withdrawals: vec![
                     QualifiedRequestId {
                         request_id: 0,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
                         request_id: 0,
-                        txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                 ],
@@ -1870,12 +1845,10 @@ mod tests {
                     withdrawals: vec![
                         QualifiedRequestId {
                             request_id: 0,
-                            txid: StacksTxId::from([1; 32]),
                             block_hash: StacksBlockHash::from([1; 32]),
                         },
                         QualifiedRequestId {
                             request_id: 0,
-                            txid: StacksTxId::from([1; 32]),
                             block_hash: StacksBlockHash::from([2; 32]),
                         },
                     ],
@@ -1901,12 +1874,10 @@ mod tests {
                     withdrawals: vec![
                         QualifiedRequestId {
                             request_id: 0,
-                            txid: StacksTxId::from([1; 32]),
                             block_hash: StacksBlockHash::from([1; 32]),
                         },
                         QualifiedRequestId {
                             request_id: 1,
-                            txid: StacksTxId::from([1; 32]),
                             block_hash: StacksBlockHash::from([2; 32]),
                         },
                     ],
@@ -1960,12 +1931,10 @@ mod tests {
                     withdrawals: vec![
                         QualifiedRequestId {
                             request_id: 0,
-                            txid: StacksTxId::from([1; 32]),
                             block_hash: StacksBlockHash::from([1; 32]),
                         },
                         QualifiedRequestId {
                             request_id: 0,
-                            txid: StacksTxId::from([1; 32]),
                             block_hash: StacksBlockHash::from([2; 32]),
                         },
                     ],
@@ -2004,7 +1973,6 @@ mod tests {
     fn create_withdrawal_report(idx: u8, amount: u64) -> (WithdrawalRequestReport, SignerVotes) {
         let report = WithdrawalRequestReport {
             id: QualifiedRequestId {
-                txid: StacksTxId::from([0; 32]),
                 request_id: idx as u64,
                 block_hash: StacksBlockHash::from([0; 32]),
             },

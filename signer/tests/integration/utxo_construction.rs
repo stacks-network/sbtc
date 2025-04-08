@@ -59,7 +59,6 @@ pub fn make_withdrawal(amount: u64, max_fee: u64) -> (WithdrawalRequest, Recipie
         script_pubkey: recipient.script_pubkey.clone().into(),
         signer_bitmap: BitArray::ZERO,
         request_id: REQUEST_IDS.fetch_add(1, Ordering::Relaxed),
-        txid: fake::Faker.fake_with_rng(&mut OsRng),
         block_hash: fake::Faker.fake_with_rng(&mut OsRng),
     };
 
