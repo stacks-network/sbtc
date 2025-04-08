@@ -57,11 +57,10 @@ class DepositInfo:
     @property
     def max_fee(self) -> int:
         """Extracts the max fee from deposit script."""
-        script = Script.parse(self.deposit_script)
-        if script.redeemscript:
-            max_fee_bytes = script.redeemscript
-        else:
-            max_fee_bytes = bytes.fromhex(script.view(as_list=True)[0])
+        # Setting _level=1 bypasses the recursive parsing logic that
+        # might otherwise treat this script's data as a nested script.
+        script = Script.parse(self.deposit_script, _level=1)
+        max_fee_bytes = bytes.fromhex(script.view(as_list=True)[0])
         return int.from_bytes(max_fee_bytes[:8], byteorder="big")
 
     @functools.cached_property
