@@ -21,7 +21,6 @@ emily-client = { path = "./.generated-sources/emily/client/rust/public" }
 testing-emily-client = { path = "./.generated-sources/emily/client/rust/testing" }
 blocklist-api = { path = "./.generated-sources/blocklist-api" }
 blocklist-client = { path = "./blocklist-client" }
-test-helper = { path = "./test-helper" }
 
 # Stacks-Core Dependencies
 clarity = { git = "https://github.com/stacks-network/stacks-core", rev = "49777d3fd73a6dbb610be80c376b7d9389c9871a", default-features = false, features = ["canonical"] }
