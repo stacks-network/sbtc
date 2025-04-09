@@ -288,8 +288,13 @@ where
         .await
         .expect("timeout");
 
+        // The query that fetches pending withdrawal requests uses
+        // `context_window` blocks plus 1, and the in-memory implementation
+        // matches that behavior. So for this test we need to make sure
+        // that we look back the correct number of blocks, hence the plus
+        // 1.
         self.assert_only_withdraw_requests_in_context_window_has_decisions(
-            self.context_window,
+            self.context_window + 1,
             &test_data.withdraw_requests,
             1,
         )

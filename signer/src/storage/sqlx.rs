@@ -6,8 +6,6 @@
 use std::ops::Deref;
 use std::str::FromStr as _;
 
-use bitcoin::consensus::Decodable as _;
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
@@ -16,7 +14,6 @@ use sqlx::postgres::PgArgumentBuffer;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::storage::model::BitcoinBlockHash;
-use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SigHash;
@@ -77,37 +74,6 @@ impl<'r> sqlx::Encode<'r, sqlx::Postgres> for BitcoinBlockHash {
 impl sqlx::postgres::PgHasArrayType for BitcoinBlockHash {
     fn array_type_info() -> sqlx::postgres::PgTypeInfo {
         <[u8; 32] as sqlx::postgres::PgHasArrayType>::array_type_info()
-    }
-}
-
-// For the [`BitcoinTx`]
-
-impl<'r> sqlx::Decode<'r, sqlx::Postgres> for BitcoinTx {
-    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
-        let bytes = <Vec<u8> as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        let mut reader = bytes.as_slice();
-        let tx = bitcoin::Transaction::consensus_decode(&mut reader)?;
-        Ok(BitcoinTx::from(tx))
-    }
-}
-
-impl sqlx::Type<sqlx::Postgres> for BitcoinTx {
-    fn type_info() -> sqlx::postgres::PgTypeInfo {
-        <Vec<u8> as sqlx::Type<sqlx::Postgres>>::type_info()
-    }
-}
-
-impl<'r> sqlx::Encode<'r, sqlx::Postgres> for BitcoinTx {
-    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
-        let mut writer: Vec<u8> = Vec::<u8>::new();
-        self.consensus_encode(&mut writer)?;
-        <Vec<u8> as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&writer, buf)
-    }
-}
-
-impl sqlx::postgres::PgHasArrayType for BitcoinTx {
-    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
-        <Vec<u8> as sqlx::postgres::PgHasArrayType>::array_type_info()
     }
 }
 
