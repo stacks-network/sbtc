@@ -28,12 +28,12 @@ pub struct ExecuteReorgRequest {
 ///
 /// Return meanings:
 /// - Err(e):
-///     Something went wrong.
+///   Something went wrong.
 /// - Ok(None):
-///     The API status is already what we wanted it to be, so there's
-///     no action required.
+///   The API status is already what we wanted it to be, so there's
+///   no action required.
 /// - Ok(Some(ApiStateEntry)):
-///     We have successfully converted the api to the state returned.
+///   We have successfully converted the api to the state returned.
 async fn set_api_state_status(
     context: &EmilyContext,
     new_status: &ApiStatus,
