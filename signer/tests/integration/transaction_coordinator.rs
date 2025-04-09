@@ -35,7 +35,6 @@ use fake::Faker;
 use futures::StreamExt as _;
 use lru::LruCache;
 use mockito;
-use rand::SeedableRng as _;
 use rand::rngs::OsRng;
 use reqwest;
 use sbtc::testing::regtest;
@@ -52,6 +51,7 @@ use signer::context::RequestDeciderEvent;
 use signer::message::Payload;
 use signer::network::MessageTransfer;
 use signer::storage::model::WithdrawalTxOutput;
+use signer::testing::get_rng;
 use testing_emily_client::apis::chainstate_api;
 use testing_emily_client::apis::testing_api;
 use testing_emily_client::apis::withdrawal_api;
@@ -455,7 +455,7 @@ fn mock_recover_and_deploy_all_contracts_after_failure(
 #[test(tokio::test)]
 async fn process_complete_deposit() {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -668,7 +668,7 @@ async fn deploy_smart_contracts_coordinator<F>(
     F: FnOnce(u64, Sender<StacksTransaction>) -> Box<dyn FnOnce(&mut MockStacksInteract)>,
 {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
 
     let num_messages = smart_contracts.len();
 
@@ -842,7 +842,7 @@ async fn deploy_smart_contracts_coordinator<F>(
 /// from the [`testing::wallet::regtest_bootstrap_wallet`] function.
 #[test(tokio::test)]
 async fn run_dkg_from_scratch() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (signer_wallet, signer_key_pairs): (_, [Keypair; 3]) =
         testing::wallet::regtest_bootstrap_wallet();
 
@@ -1069,7 +1069,7 @@ async fn run_dkg_from_scratch() {
 /// that allows for multiple DKG rounds.
 #[test(tokio::test)]
 async fn run_subsequent_dkg() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (signer_wallet, signer_key_pairs): (_, [Keypair; 3]) =
         testing::wallet::regtest_bootstrap_wallet();
 
@@ -2697,7 +2697,7 @@ async fn wait_for_signers(signers: &[(IntegrationTestContext, PgStore, &Keypair,
 /// the `last_fees` field should be `None`.
 #[test(tokio::test)]
 async fn test_get_btc_state_with_no_available_sweep_transactions() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+    let mut rng = get_rng();
 
     let db = testing::storage::new_test_database().await;
 
@@ -2832,7 +2832,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
 /// packages available, simulating the case where there has been an RBF.
 #[test(tokio::test)]
 async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+    let mut rng = get_rng();
 
     let db = testing::storage::new_test_database().await;
 
@@ -3122,7 +3122,7 @@ fn create_test_setup(
 #[tokio::test]
 async fn test_conservative_initial_sbtc_limits() {
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut rng = rand::rngs::StdRng::seed_from_u64(56);
+    let mut rng = get_rng();
 
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
     let signatures_required: u16 = 2;
@@ -3987,7 +3987,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
 #[tokio::test]
 async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let mut context = TestContext::builder()

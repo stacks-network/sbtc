@@ -117,7 +117,7 @@ mod tests {
     use crate::{
         keys::{PrivateKey, PublicKey},
         network::libp2p::SignerSwarmBuilder,
-        testing::{self, clear_env, context::*, network::RandomMemoryMultiaddr},
+        testing::{self, clear_env, context::*, get_rng, network::RandomMemoryMultiaddr},
     };
 
     #[test(tokio::test)]
@@ -222,7 +222,7 @@ mod tests {
     async fn connected_peers_gossip_to_one_another() {
         clear_env();
 
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = get_rng();
         let key1 = PrivateKey::new(&mut rng);
         let key2 = PrivateKey::new(&mut rng);
         let key3 = PrivateKey::new(&mut rng);
@@ -376,7 +376,7 @@ mod tests {
     async fn signers_check_source_peer_ids() {
         clear_env();
 
-        let mut rng = rand::rngs::OsRng;
+        let mut rng = get_rng();
         let key1 = PrivateKey::new(&mut rng);
         let key2 = PrivateKey::new(&mut rng);
         let key3 = PrivateKey::new(&mut rng);

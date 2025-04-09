@@ -580,8 +580,8 @@ impl From<&bitcoin::Block> for crate::storage::model::BitcoinBlockRef {
 #[cfg(test)]
 mod tests {
     use more_asserts::assert_ge;
-    use rand::SeedableRng as _;
 
+    use crate::testing::get_rng;
     use crate::{
         storage::{self, DbRead as _},
         testing,
@@ -592,7 +592,7 @@ mod tests {
     #[tokio::test]
     async fn check_simple_chain() {
         let mut store = storage::in_memory::Store::new_shared();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let mut rng = get_rng();
 
         let test_model_params = Params {
             num_bitcoin_blocks: 10,

@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::ops::Deref;
 
 use bitcoin::hashes::Hash as _;
-use rand::SeedableRng as _;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use test_case::test_case;
@@ -24,6 +23,7 @@ use signer::storage::model::TxPrevoutType;
 use signer::testing;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
+use signer::testing::get_rng;
 
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
@@ -94,7 +94,7 @@ impl AssertConstantInvariants for Vec<BitcoinTxValidationData> {
 #[tokio::test]
 async fn one_tx_per_request_set() {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let ctx = TestContext::builder()
@@ -190,7 +190,7 @@ async fn one_invalid_deposit_invalidates_tx() {
     let low_fee = 10;
 
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let ctx = TestContext::builder()
@@ -353,7 +353,7 @@ async fn one_invalid_deposit_invalidates_tx() {
 #[tokio::test]
 async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>) {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let ctx = TestContext::builder()
@@ -448,7 +448,7 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
 #[tokio::test]
 async fn swept_withdrawals_fail_validation() {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let ctx = TestContext::builder()
@@ -557,7 +557,7 @@ async fn swept_withdrawals_fail_validation() {
 #[tokio::test]
 async fn cannot_sign_deposit_is_ok() {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -724,7 +724,7 @@ async fn cannot_sign_deposit_is_ok() {
 #[tokio::test]
 async fn sighashes_match_from_sbtc_requests_object() {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let ctx = TestContext::builder()

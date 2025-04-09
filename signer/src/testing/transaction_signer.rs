@@ -19,11 +19,11 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::storage::model;
 use crate::testing;
+use crate::testing::get_rng;
 use crate::testing::storage::model::TestData;
 use crate::transaction_signer;
 
 use lru::LruCache;
-use rand::SeedableRng as _;
 use tokio::sync::broadcast;
 use tokio::time::error::Elapsed;
 
@@ -144,7 +144,7 @@ where
     /// Assert that a group of transaction signers together can
     /// participate successfully in a DKG round
     pub async fn assert_should_be_able_to_participate_in_dkg(self) {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut rng = get_rng();
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
