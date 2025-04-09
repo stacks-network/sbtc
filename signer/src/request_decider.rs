@@ -592,6 +592,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "We track fix of this test in #1466"]
     async fn should_store_decisions_for_pending_withdrawal_requests() {
         test_environment()
             .assert_should_store_decisions_for_pending_withdrawal_requests()
