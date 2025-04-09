@@ -68,15 +68,11 @@ use signer::testing::dummy::SignerSetConfig;
 use signer::testing::storage::model::TestData;
 use signer::testing::wallet::ContractCallWrapper;
 
-use test_helper::test_async as run_test_async;
-
-use rand::RngCore;
-use rand::rngs::OsRng;
-
 use fake::Fake;
 use rand::SeedableRng;
 use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use signer::testing::context::*;
+use signer::testing::get_rng;
 use test_case::test_case;
 use test_log::test;
 
@@ -3247,9 +3243,10 @@ async fn should_get_signer_utxo_donations() {
 /// Check the expected report if the deposit request and transaction are in
 /// the database, but this signers vote is missing and the transaction is
 /// confirmed on the wrong blockchain.
-async fn deposit_report_with_only_deposit_request(seed: u64) {
+#[tokio::test]
+async fn deposit_report_with_only_deposit_request() {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    let mut rng = get_rng();
 
     // We only want the blockchain to be generated
     let num_signers = 3;
@@ -3336,7 +3333,6 @@ async fn deposit_report_with_only_deposit_request(seed: u64) {
 
     testing::storage::drop_db(db).await;
 }
-run_test_async!(deposit_report_with_only_deposit_request);
 
 /// Check that if the deposit has been confirmed on a block that is not on
 /// the canonical bitcoin blockchain then the deposit reports the status as

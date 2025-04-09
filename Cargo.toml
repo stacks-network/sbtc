@@ -10,7 +10,7 @@ members = [
     "emily/handler",
     "emily/openapi-gen",
     "sbtc",
-    "signer", "test-helper",
+    "signer",
 ]
 
 [workspace.dependencies]

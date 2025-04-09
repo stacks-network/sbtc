@@ -82,7 +82,6 @@ test-log.workspace = true
 testing-emily-client.workspace = true
 toml_edit.workspace = true
 tower.workspace = true
-test-helper.workspace = true
 
 [[bin]]
 name = "demo-cli"

@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use super::get_rng;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::utxo::SignerUtxo;
@@ -50,9 +51,6 @@ use clarity::vm::types::BuffData;
 use clarity::vm::types::SequenceData;
 use fake::Fake as _;
 use fake::Faker;
-use rand::RngCore;
-use rand::SeedableRng as _;
-use rand::rngs::OsRng;
 use rand::seq::IteratorRandom;
 
 use super::context::TestContext;
@@ -181,10 +179,7 @@ where
     /// Asserts that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
     pub async fn assert_processes_withdrawals(mut self) {
         // Setup network and signer info
-        let mut rng = OsRng::default();
-        let seed = OsRng::next_u64(&mut rng);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
+        let mut rng = get_rng();
         let network = network::InMemoryNetwork::new();
         let context = self.context.clone();
         let storage = context.get_storage();
@@ -329,10 +324,7 @@ where
         mut self,
         delay_to_process_new_blocks: Duration,
     ) {
-        let mut rng = OsRng::default();
-        let seed = OsRng::next_u64(&mut rng);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
+        let mut rng = get_rng();
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
@@ -479,10 +471,7 @@ where
     /// Assert that a coordinator should be able to skip the deployment the sbtc contracts
     /// if they are already deployed.
     pub async fn assert_skips_deploy_sbtc_contracts(mut self) {
-        let mut rng = OsRng::default();
-        let seed = OsRng::next_u64(&mut rng);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
+        let mut rng = get_rng();
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
@@ -666,10 +655,7 @@ where
 
     /// Assert we get a withdrawal accept tx
     pub async fn assert_construct_withdrawal_accept_stacks_sign_request(mut self) {
-        let mut rng = OsRng::default();
-        let seed = OsRng::next_u64(&mut rng);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
+        let mut rng = get_rng();
         let signer_network = SignerNetwork::single(&self.context);
         let private_key = PrivateKey::new(&mut rng);
         let bitcoin_aggregate_key = PublicKey::from_private_key(&private_key);
@@ -830,10 +816,7 @@ where
 
     /// Assert we get a withdrawal reject tx
     pub async fn assert_construct_withdrawal_reject_stacks_sign_request(mut self) {
-        let mut rng = OsRng::default();
-        let seed = OsRng::next_u64(&mut rng);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
+        let mut rng = get_rng();
         let signer_network = SignerNetwork::single(&self.context);
         let private_key = PrivateKey::new(&mut rng);
         let bitcoin_aggregate_key = PublicKey::from_private_key(&private_key);
@@ -926,10 +909,7 @@ where
 {
     /// Assert we get the correct UTXO in a simple case
     pub async fn assert_get_signer_utxo_simple(mut self) {
-        let mut rng = OsRng::default();
-        let seed = OsRng::next_u64(&mut rng);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
+        let mut rng = get_rng();
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
@@ -999,10 +979,7 @@ where
 
     /// Assert we get the correct UTXO in a fork
     pub async fn assert_get_signer_utxo_fork(mut self) {
-        let mut rng = OsRng::default();
-        let seed = OsRng::next_u64(&mut rng);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
+        let mut rng = get_rng();
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
@@ -1110,10 +1087,7 @@ where
 
     /// Assert we get the correct UTXO with a spending chain in a block
     pub async fn assert_get_signer_utxo_unspent(mut self) {
-        let mut rng = OsRng::default();
-        let seed = OsRng::next_u64(&mut rng);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
+        let mut rng = get_rng();
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
@@ -1210,10 +1184,7 @@ where
 
     /// Assert we get the correct UTXO in case of donations
     pub async fn assert_get_signer_utxo_donations(mut self) {
-        let mut rng = OsRng::default();
-        let seed = OsRng::next_u64(&mut rng);
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        eprintln!("seed: {seed}"); // Nextest print stderr only on fail
+        let mut rng = get_rng();
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
 
