@@ -14,7 +14,16 @@ def asdict_camel(d: Any) -> dict:
 
 
 def decode_cscript_int(vch: bytes) -> int:
-    """Decodes a cscript integer."""
+    """Decodes a cscript integer.
+
+    Reference implementation:
+    https://github.com/bitcoin/bitcoin/blob/43a66c55ec8770cf7c21112aac9b997f3f2fb704/test/functional/test_framework/script.py#L407-L421
+
+    Note: The original implementation expects the encoded integer to be
+    prefixed with a byte indicating its length, which the decoder skips.
+    In our case (e.g., when we decode reclaim script locktime), this length
+    prefix is not present, so we don't skip the first byte.
+    """
     result = 0
     # We assume valid push_size and minimal encoding
     if len(vch) == 0:
