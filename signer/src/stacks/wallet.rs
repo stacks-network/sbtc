@@ -48,7 +48,6 @@ use crate::storage::model::BitcoinBlockHash;
 const MULTISIG_ADDRESS_HASH_MODE: OrderIndependentMultisigHashMode =
     OrderIndependentMultisigHashMode::P2SH;
 
-// TODO: Make this under `testing` feature and use `get_rng`.
 /// A set of dummy private keys which are used for creating "dummy" transactions
 /// for Stacks transaction size estimation.
 static DUMMY_PRIVATE_KEYS: LazyLock<[PrivateKey; 128]> = LazyLock::new(|| {

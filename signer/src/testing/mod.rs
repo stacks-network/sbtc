@@ -120,7 +120,7 @@ impl<I, T> IterTestExt<T> for I where I: IntoIterator<Item = T> + Sized {}
 /// Returns a seedable rng with random seed. Prints the seed to
 /// stderr so that it can be used to reproduce the test
 pub fn get_rng() -> StdRng {
-    let seed = OsRng::default().next_u64();
+    let seed = OsRng.next_u64();
 
     // Nextest prints stdout and stderr only for failing tests
     eprintln!("Failed with seed: {seed}");
