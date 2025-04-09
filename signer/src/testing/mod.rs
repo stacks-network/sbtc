@@ -26,6 +26,7 @@ use secp256k1::SECP256K1;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand::rngs::{OsRng, StdRng};
+use rand::CryptoRng;
 
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::config::Settings;
@@ -119,7 +120,7 @@ impl<I, T> IterTestExt<T> for I where I: IntoIterator<Item = T> + Sized {}
 
 /// Returns a seedable rng with random seed. Prints the seed to
 /// stderr so that it can be used to reproduce the test
-pub fn get_rng() -> StdRng {
+pub fn get_rng() -> impl CryptoRng + RngCore + Clone + Send {
     let seed = OsRng.next_u64();
 
     // Nextest prints stderr only for failing tests, so this message
