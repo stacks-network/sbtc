@@ -122,7 +122,8 @@ impl<I, T> IterTestExt<T> for I where I: IntoIterator<Item = T> + Sized {}
 pub fn get_rng() -> StdRng {
     let seed = OsRng.next_u64();
 
-    // Nextest prints stdout and stderr only for failing tests
-    eprintln!("Failed with seed: {seed}");
+    // Nextest prints stderr only for failing tests, so this message
+    // will only appear if the test fails (by default).
+    eprintln!("Test executed with seed: {seed}");
     StdRng::seed_from_u64(seed)
 }
