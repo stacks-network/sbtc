@@ -28,12 +28,12 @@ pub struct ExecuteReorgRequest {
 ///
 /// Return meanings:
 /// - Err(e):
-///     Something went wrong.
+///   Something went wrong.
 /// - Ok(None):
-///     The API status is already what we wanted it to be, so there's
-///     no action required.
+///   The API status is already what we wanted it to be, so there's
+///   no action required.
 /// - Ok(Some(ApiStateEntry)):
-///     We have successfully converted the api to the state returned.
+///   We have successfully converted the api to the state returned.
 async fn set_api_state_status(
     context: &EmilyContext,
     new_status: &ApiStatus,
@@ -56,17 +56,24 @@ async fn set_api_state_status(
             }
             // Handle trying to set the api status to reorganizing.
             (ApiStatus::Reorg(new_reorg_tip), ApiStatus::Reorg(current_reorg_tip)) => {
-                if new_reorg_tip == current_reorg_tip {
+                // Compare only `.key` (stacks height and hash) since old chainstate entries lack
+                // `bitcoin_block_height`. A Stacks block always has the same Bitcoin height, so
+                // ignoring it prevents false mismatches for old data.
+                if new_reorg_tip.key == current_reorg_tip.key {
                     return Ok(None);
                 } else {
-                    let err_msg: String = format!("Trying to reorg with new chaintip {new_reorg_tip:?} while the api is reorganizing around the chaintip {current_reorg_tip:?}");
+                    let err_msg: String = format!(
+                        "Trying to reorg with new chaintip {new_reorg_tip:?} while the api is reorganizing around the chaintip {current_reorg_tip:?}"
+                    );
                     warn!(err_msg);
                     return Err(Error::InconsistentState(Inconsistency::ItemUpdate(err_msg)));
                 }
             }
         };
 
-        debug!("Changing Api state from [{original_api_state:?}] to [{api_state:?}]. Attempt {attempt_number} of maximum {MAX_SET_API_STATE_ATTEMPTS_DURING_REORG}.");
+        debug!(
+            "Changing Api state from [{original_api_state:?}] to [{api_state:?}]. Attempt {attempt_number} of maximum {MAX_SET_API_STATE_ATTEMPTS_DURING_REORG}."
+        );
 
         // Attempt to set the API state.
         match accessors::set_api_state(context, &api_state).await {

@@ -3,11 +3,11 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::TapSighash;
 use bitcoin::XOnlyPublicKey;
+use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use clarity::util::secp256k1::Secp256k1PublicKey;
@@ -17,8 +17,8 @@ use fake::Faker;
 use p256k1::point::Point;
 use p256k1::scalar::Scalar;
 use polynomial::Polynomial;
-use rand::seq::IteratorRandom as _;
 use rand::Rng;
+use rand::seq::IteratorRandom as _;
 use secp256k1::ecdsa::RecoverableSignature;
 use stacks_common::address::AddressHashMode;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;

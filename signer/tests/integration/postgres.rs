@@ -6,29 +6,29 @@ use std::time::Duration;
 
 use bitcoin::hashes::Hash as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
-use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
+use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use fake::Faker;
-use futures::future::join_all;
 use futures::StreamExt as _;
+use futures::future::join_all;
 use more_asserts::assert_gt;
 use more_asserts::assert_le;
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
+use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 use signer::bitcoin::validation::WithdrawalRequestStatus;
 use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::SweptWithdrawalRequest;
 use signer::storage::model::WithdrawalRequest;
-use signer::testing::storage::DbReadTestExt;
 use signer::testing::IterTestExt as _;
-use signer::WITHDRAWAL_BLOCKS_EXPIRY;
+use signer::testing::storage::DbReadTestExt;
 use time::OffsetDateTime;
 
-use signer::bitcoin::validation::DepositConfirmationStatus;
 use signer::bitcoin::MockBitcoinInteract;
+use signer::bitcoin::validation::DepositConfirmationStatus;
 use signer::config::Settings;
 use signer::context::Context;
 use signer::emily_client::MockEmilyInteract;
@@ -45,6 +45,8 @@ use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::ReqContext;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::storage;
+use signer::storage::DbRead;
+use signer::storage::DbWrite;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlock;
 use signer::storage::model::BitcoinBlockHash;
@@ -62,8 +64,6 @@ use signer::storage::model::WithdrawalAcceptEvent;
 use signer::storage::model::WithdrawalRejectEvent;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
-use signer::storage::DbRead;
-use signer::storage::DbWrite;
 use signer::testing;
 use signer::testing::dummy::SignerSetConfig;
 use signer::testing::storage::model::TestData;
@@ -71,17 +71,17 @@ use signer::testing::wallet::ContractCallWrapper;
 
 use fake::Fake;
 use rand::SeedableRng;
-use signer::testing::context::*;
 use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
+use signer::testing::context::*;
 use test_case::test_case;
 use test_log::test;
 
-use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::fetch_canonical_bitcoin_blockchain;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::fetch_canonical_bitcoin_blockchain;
 
 #[tokio::test]
 async fn should_be_able_to_query_bitcoin_blocks() {
@@ -2047,16 +2047,18 @@ async fn is_known_bitcoin_block_hash_works() {
     // It's very unlikely that this random block will be known. It's also
     // that the fixed one is known as well.
     let random_block_hash: model::BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rng);
-    assert!(!db
-        .is_known_bitcoin_block_hash(&random_block_hash)
-        .await
-        .unwrap());
+    assert!(
+        !db.is_known_bitcoin_block_hash(&random_block_hash)
+            .await
+            .unwrap()
+    );
 
     let random_block_hash = model::BitcoinBlockHash::from([23; 32]);
-    assert!(!db
-        .is_known_bitcoin_block_hash(&random_block_hash)
-        .await
-        .unwrap());
+    assert!(
+        !db.is_known_bitcoin_block_hash(&random_block_hash)
+            .await
+            .unwrap()
+    );
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -5076,7 +5078,7 @@ async fn verification_status_one_way_street() {
 
 /// Return a stacks block that is anchored to the bitcoin block with the
 /// given block hash that is also on the canonical stacks blockchain, if
-/// one exists. If one doesn't exist then return the stacks chain tip.
+/// one exists. If one doesn't exist then panic.
 async fn get_stacks_block(
     test_data: &TestData,
     db: &PgStore,
@@ -5104,7 +5106,7 @@ async fn get_stacks_block(
         }
     }
 
-    stacks_chain_tip
+    panic!("could not find a stacks block with the given anchor: {anchor}");
 }
 
 /// Tests that get_pending_rejected_withdrawal_requests correctly return expired
@@ -5391,22 +5393,24 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
         .await
         .unwrap()
         .unwrap();
-    assert!(db
-        .in_canonical_stacks_blockchain(
+    assert!(
+        db.in_canonical_stacks_blockchain(
             &stacks_chain_tip.block_hash,
             &fork_base.block_hash,
             fork_base.block_height
         )
         .await
-        .unwrap());
-    assert!(!db
-        .in_canonical_stacks_blockchain(
+        .unwrap()
+    );
+    assert!(
+        !db.in_canonical_stacks_blockchain(
             &stacks_chain_tip.block_hash,
             &forked_stacks_block.block_hash,
             forked_stacks_block.block_height
         )
         .await
-        .unwrap());
+        .unwrap()
+    );
 
     let event = WithdrawalRejectEvent {
         request_id: request.request_id,
@@ -5545,14 +5549,16 @@ async fn pending_rejected_withdrawal_already_accepted() {
         .await
         .unwrap()
         .unwrap();
-    assert!(db
-        .in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &fork_base.clone().into())
-        .await
-        .unwrap());
-    assert!(!db
-        .in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &forked_block.into())
-        .await
-        .unwrap());
+    assert!(
+        db.in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &fork_base.clone().into())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !db.in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &forked_block.into())
+            .await
+            .unwrap()
+    );
 
     // With a forked withdrawal output, the request is still pending rejected
     let pending_rejected = db

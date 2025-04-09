@@ -283,7 +283,7 @@ impl BitmapSegmenter {
     ///
     /// ## Returns
     /// * `true` if values are sorted in ascending order and doesn't contain
-    ///    duplicates,
+    ///   duplicates,
     /// * `false` otherwise
     #[inline]
     fn is_unique_sorted(values: &[u64]) -> bool {

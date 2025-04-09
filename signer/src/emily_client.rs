@@ -8,13 +8,13 @@ use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Txid;
+use emily_client::apis::Error as EmilyError;
+use emily_client::apis::ResponseContent;
 use emily_client::apis::configuration::ApiKey;
 use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
 use emily_client::apis::limits_api;
 use emily_client::apis::withdrawal_api;
-use emily_client::apis::Error as EmilyError;
-use emily_client::apis::ResponseContent;
 use emily_client::models::DepositInfo;
 use emily_client::models::DepositUpdate;
 use emily_client::models::Status;
@@ -213,7 +213,7 @@ impl EmilyInteract for EmilyClient {
             Err(EmilyError::ResponseError(ResponseContent { status, .. }))
                 if status.as_u16() == 404 =>
             {
-                return Ok(None)
+                return Ok(None);
             }
             error => error.map_err(EmilyClientError::GetDeposit)?,
         };

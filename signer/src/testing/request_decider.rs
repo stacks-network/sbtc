@@ -11,21 +11,22 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message::Payload;
+use crate::network::MessageTransfer as _;
 use crate::network::in_memory2::SignerNetwork;
 use crate::network::in_memory2::SignerNetworkInstance;
 use crate::network::in_memory2::WanNetwork;
-use crate::network::MessageTransfer as _;
 use crate::request_decider::RequestDeciderEventLoop;
 use crate::storage;
-use crate::storage::model;
-use crate::storage::model::DkgSharesStatus;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
+use crate::storage::model;
+use crate::storage::model::DkgSharesStatus;
 use crate::testing;
 use crate::testing::storage::model::TestData;
 
 use hashbrown::HashSet;
 use rand::SeedableRng as _;
+use rand::rngs::OsRng;
 use tokio::sync::broadcast;
 use tokio::time::error::Elapsed;
 
@@ -231,7 +232,7 @@ where
     /// Assert that the transaction signer will make and store decisions
     /// for pending withdraw requests.
     pub async fn assert_should_store_decisions_for_pending_withdrawal_requests(self) {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(6);
+        let mut rng = OsRng;
         let wan_network = WanNetwork::default();
 
         let ctx1 = TestContext::default_mocked();
@@ -288,8 +289,13 @@ where
         .await
         .expect("timeout");
 
+        // The query that fetches pending withdrawal requests uses
+        // `context_window` blocks plus 1, and the in-memory implementation
+        // matches that behavior. So for this test we need to make sure
+        // that we look back the correct number of blocks, hence the plus
+        // 1.
         self.assert_only_withdraw_requests_in_context_window_has_decisions(
-            self.context_window,
+            self.context_window + 1,
             &test_data.withdraw_requests,
             1,
         )

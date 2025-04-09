@@ -10,6 +10,7 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
+use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::WithdrawalRequestReport;
@@ -21,7 +22,6 @@ use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
-use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 use super::model::DkgSharesStatus;
 use super::util::get_utxo;
@@ -127,6 +127,51 @@ impl Store {
         Arc::new(Mutex::new(Self::new()))
     }
 
+    /// Create the bitcoin transaction from the stored Prevouts and outputs
+    /// for the given transaction ID.
+    fn reconstruct_transaction(&self, txid: &model::BitcoinTxId) -> Option<bitcoin::Transaction> {
+        let outputs = self
+            .bitcoin_outputs
+            .get(txid)
+            .cloned()
+            .unwrap_or_else(Vec::new);
+        let prevouts = self
+            .bitcoin_prevouts
+            .get(txid)
+            .cloned()
+            .unwrap_or_else(Vec::new);
+
+        if outputs.is_empty() && prevouts.is_empty() {
+            return None;
+        }
+
+        // This is most likely an sBTC sweep transaction, so we match the
+        // version of locktime used in our actual sweep transactions.
+        Some(bitcoin::Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
+            input: prevouts
+                .into_iter()
+                .map(|prevout| bitcoin::TxIn {
+                    previous_output: bitcoin::OutPoint {
+                        txid: prevout.txid.into(),
+                        vout: prevout.prevout_output_index,
+                    },
+                    script_sig: bitcoin::ScriptBuf::new(),
+                    sequence: bitcoin::Sequence::ZERO,
+                    witness: bitcoin::Witness::new(),
+                })
+                .collect(),
+            output: outputs
+                .into_iter()
+                .map(|outpout| bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(outpout.amount),
+                    script_pubkey: outpout.script_pubkey.into(),
+                })
+                .collect(),
+        })
+    }
+
     async fn get_utxo_from_donation(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -149,31 +194,7 @@ impl Store {
                     .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::Donation)
                     .filter_map(|tx| {
                         let txid = model::BitcoinTxId::from(tx.txid);
-                        let outputs = self.bitcoin_outputs.get(&txid)?;
-                        let prevouts = self.bitcoin_prevouts.get(&txid)?;
-                        Some(bitcoin::Transaction {
-                            version: bitcoin::transaction::Version::TWO,
-                            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
-                            input: prevouts
-                                .iter()
-                                .map(|prevout| bitcoin::TxIn {
-                                    previous_output: bitcoin::OutPoint {
-                                        txid: prevout.txid.into(),
-                                        vout: prevout.prevout_output_index,
-                                    },
-                                    script_sig: bitcoin::ScriptBuf::new(),
-                                    sequence: bitcoin::Sequence::ZERO,
-                                    witness: bitcoin::Witness::new(),
-                                })
-                                .collect(),
-                            output: outputs
-                                .iter()
-                                .map(|outpout| bitcoin::TxOut {
-                                    value: bitcoin::Amount::from_sat(outpout.amount),
-                                    script_pubkey: outpout.script_pubkey.clone().into(),
-                                })
-                                .collect(),
-                        })
+                        self.reconstruct_transaction(&txid)
                     })
                     .filter(|tx| {
                         tx.output
@@ -698,31 +719,7 @@ impl super::DbRead for SharedStore {
                     .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::SbtcTransaction)
                     .filter_map(|tx| {
                         let txid = model::BitcoinTxId::from(tx.txid);
-                        let outputs = store.bitcoin_outputs.get(&txid)?;
-                        let prevouts = store.bitcoin_prevouts.get(&txid)?;
-                        Some(bitcoin::Transaction {
-                            version: bitcoin::transaction::Version::TWO,
-                            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
-                            input: prevouts
-                                .iter()
-                                .map(|prevout| bitcoin::TxIn {
-                                    previous_output: bitcoin::OutPoint {
-                                        txid: prevout.txid.into(),
-                                        vout: prevout.prevout_output_index,
-                                    },
-                                    script_sig: bitcoin::ScriptBuf::new(),
-                                    sequence: bitcoin::Sequence::ZERO,
-                                    witness: bitcoin::Witness::new(),
-                                })
-                                .collect(),
-                            output: outputs
-                                .iter()
-                                .map(|outpout| bitcoin::TxOut {
-                                    value: bitcoin::Amount::from_sat(outpout.amount),
-                                    script_pubkey: outpout.script_pubkey.clone().into(),
-                                })
-                                .collect(),
-                        })
+                        store.reconstruct_transaction(&txid)
                     })
                     .filter(|tx| {
                         tx.output
@@ -932,46 +929,6 @@ impl super::DbRead for SharedStore {
         _context_window: u16,
     ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
         unimplemented!("can only be tested using integration tests for now.");
-
-        // NOTE: The below is a starting point for how to write this, but it
-        // lacks some of the additional validations that are expected of this
-        // function. For example, we need to ensure that the
-        // 'withdrawal-accept-event' is in a Stacks block which is part of the
-        // canonical Bitcoin chain, which we cannot do yet (#559: link stacks
-        // blocks with bitcoin blocks).
-
-        // let store = self.lock().await;
-        // let bitcoin_blocks = &store.bitcoin_blocks;
-        // let first = bitcoin_blocks.get(chain_tip);
-
-        // std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
-        //     .take(context_window as usize)
-        //     .filter_map(|block| {
-        //         store
-        //             .bitcoin_block_to_transactions
-        //             .get(&block.block_hash)
-        //             .and_then(|txs| {
-        //                 store.transaction_packages.iter().find(|package| {
-        //                     package
-        //                         .transactions
-        //                         .iter()
-        //                         .any(|packaged_tx| txs.iter().any(|tx| *tx == packaged_tx.txid))
-        //                 })
-        //             })
-        //     })
-        //     .flat_map(|package| {
-        //         package.transactions.iter().flat_map(|tx| {
-        //             tx.swept_withdrawals.iter().map(|withdrawal| {
-        //                 Ok(model::SweptWithdrawalRequest {
-        //                     request_id: withdrawal.withdrawal_request_id,
-        //                     block_hash: withdrawal.withdrawal_request_block_hash,
-        //                     sweep_block_hash: package.created_at_block_hash,
-        //                     sweep_txid: tx.txid,
-        //                 })
-        //             })
-        //         })
-        //     })
-        //     .collect::<Result<Vec<_>, Error>>()
     }
 
     async fn get_deposit_request(
