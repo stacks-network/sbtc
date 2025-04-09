@@ -1,5 +1,4 @@
 from dataclasses import asdict, dataclass
-from datetime import datetime
 from enum import Enum
 import functools
 from typing import Any, Optional, Self
@@ -7,6 +6,7 @@ from typing import Any, Optional, Self
 from bitcoinlib.scripts import Script
 
 from app import settings
+from app.utils import decode_cscript_int
 
 
 class RequestStatus(Enum):
@@ -52,7 +52,7 @@ class DepositInfo:
         op_code_maybe = script.view(as_list=True)[0]
         if op_code_maybe.startswith("OP_"):
             return int(op_code_maybe[len("OP_") :])
-        return int.from_bytes(script.commands[0], byteorder="little", signed=True)
+        return decode_cscript_int(script.commands[0])
 
     @property
     def max_fee(self) -> int:
@@ -61,7 +61,7 @@ class DepositInfo:
         # might otherwise treat this script's data as a nested script.
         script = Script.parse(self.deposit_script, _level=1)
         max_fee_bytes = bytes.fromhex(script.view(as_list=True)[0])
-        return int.from_bytes(max_fee_bytes[:8], byteorder="big")
+        return int.from_bytes(max_fee_bytes[:8], byteorder="big", signed=False)
 
     @functools.cached_property
     def deposit_time(self) -> int:

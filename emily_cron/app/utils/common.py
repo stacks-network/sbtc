@@ -11,3 +11,19 @@ def to_camel_case(s: str) -> str:
 def asdict_camel(d: Any) -> dict:
     """Convert the dataclass to a dict with camelCase keys."""
     return {to_camel_case(key): value for key, value in asdict(d).items()}
+
+
+def decode_cscript_int(vch: bytes) -> int:
+    """Decodes a cscript integer."""
+    result = 0
+    # We assume valid push_size and minimal encoding
+    if len(vch) == 0:
+        return result
+    for i, byte in enumerate(vch):
+        result |= int(byte) << 8 * i
+    if vch[-1] >= 0x80:
+        # Mask for all but the highest result bit
+        num_mask = (2 ** (len(vch) * 8) - 1) >> 1
+        result &= num_mask
+        result *= -1
+    return result
