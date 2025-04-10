@@ -2273,12 +2273,15 @@ impl super::DbRead for PgStore {
         .bind(id.block_hash)
         .fetch_one(&self.0)
         .await
-        .map_err(Error::SqlxQuery)?;
+        .map_err(Error::SqlxQuery)?
+        .map(BitcoinBlockHeight::try_from)
+        .transpose()
+        .map_err(Error::ConversionDatabaseInt)?;
 
         // We add one because we are interested in sweeps that were
         // confirmed after the signers last considered the withdrawal.
         let Some(min_block_height) =
-            last_considered_height.map(|x| BitcoinBlockHeight::from(x as u64) + 1u64)
+            last_considered_height.map(|height| height + 1)
         else {
             // This means that there are no rows associated with the ID in the
             // `bitcoin_withdrawals_outputs` table.
