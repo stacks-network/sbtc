@@ -3107,7 +3107,6 @@ async fn transaction_coordinator_test_environment(
 
 /// Tests that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
 #[tokio::test]
-#[ignore = "We tracking fix of this test in #1590"]
 async fn should_process_withdrawals() {
     let store = testing::storage::new_test_database().await;
 
