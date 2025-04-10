@@ -792,7 +792,8 @@ mod tests {
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
             .modify_settings(|settings| {
-                settings.signer.sbtc_bitcoin_start_height = min_height.map(Into::into)})
+                settings.signer.sbtc_bitcoin_start_height = min_height.map(Into::into)
+            })
             .build();
 
         // There must be at least one signal receiver alive when the block observer

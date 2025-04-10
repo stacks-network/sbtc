@@ -626,10 +626,7 @@ mod tests {
             .unwrap()
         {
             // Check the stacks heights increment as expected
-            assert_eq!(
-                current.block_height,
-                walk.last().unwrap().block_height - 1
-            );
+            assert_eq!(current.block_height, walk.last().unwrap().block_height - 1);
             walk.push(current);
         }
 

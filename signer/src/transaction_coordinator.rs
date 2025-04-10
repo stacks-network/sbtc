@@ -2744,7 +2744,8 @@ mod tests {
         should_allow: bool,
     ) {
         let chain_tip_height = chain_tip_height.into();
-        let dkg_min_bitcoin_block_height = dkg_min_bitcoin_block_height.map(BitcoinBlockHeight::from);
+        let dkg_min_bitcoin_block_height =
+            dkg_min_bitcoin_block_height.map(BitcoinBlockHeight::from);
         let context = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()

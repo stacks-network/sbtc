@@ -472,9 +472,9 @@ impl PgStore {
         .bind(i64::try_from(min_block_height).map_err(Error::ConversionDatabaseInt)?)
         .fetch_optional(&self.0)
         .await
-        .map_err(Error::SqlxQuery)?  
-        .map(BitcoinBlockHeight::try_from)  
-        .transpose()  
+        .map_err(Error::SqlxQuery)?
+        .map(BitcoinBlockHeight::try_from)
+        .transpose()
         .map_err(Error::ConversionDatabaseInt)
     }
 
@@ -499,9 +499,9 @@ impl PgStore {
         )
         .fetch_optional(&self.0)
         .await
-        .map_err(Error::SqlxQuery)?  
-        .map(BitcoinBlockHeight::try_from)  
-        .transpose()  
+        .map_err(Error::SqlxQuery)?
+        .map(BitcoinBlockHeight::try_from)
+        .transpose()
         .map_err(Error::ConversionDatabaseInt)
     }
 
@@ -708,9 +708,9 @@ impl PgStore {
         .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
         .fetch_optional(&self.0)
         .await
-        .map_err(Error::SqlxQuery)?  
-        .map(BitcoinBlockHeight::try_from)  
-        .transpose()  
+        .map_err(Error::SqlxQuery)?
+        .map(BitcoinBlockHeight::try_from)
+        .transpose()
         .map_err(Error::ConversionDatabaseInt)
     }
 
@@ -2280,9 +2280,7 @@ impl super::DbRead for PgStore {
 
         // We add one because we are interested in sweeps that were
         // confirmed after the signers last considered the withdrawal.
-        let Some(min_block_height) =
-            last_considered_height.map(|height| height + 1)
-        else {
+        let Some(min_block_height) = last_considered_height.map(|height| height + 1) else {
             // This means that there are no rows associated with the ID in the
             // `bitcoin_withdrawals_outputs` table.
             return Ok(false);
