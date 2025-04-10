@@ -99,6 +99,7 @@ async fn should_store_decisions_for_pending_deposit_requests() {
 }
 
 #[tokio::test]
+// TODO(#1466): This test is currently using a known-working fixed seed, but is flaky with other seeds.
 async fn should_store_decisions_for_pending_withdraw_requests() {
     let num_signers = 3;
     let signing_threshold = 2;
