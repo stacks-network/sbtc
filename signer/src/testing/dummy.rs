@@ -516,7 +516,7 @@ impl fake::Dummy<std::ops::Range<u64>> for BitcoinBlockHeight {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &std::ops::Range<u64>, rng: &mut R) -> Self {
         // Overwriting config because values greater then i64::MAX will cause db conversion errors.
         let mut config = config.clone();
-        if config.end > i64::MAX as u64 {
+        if config.end > i64::MAX as u64 || config.start >= config.end {
             config.start = 0;
             config.end = i64::MAX as u64;
         }
@@ -528,7 +528,7 @@ impl fake::Dummy<std::ops::Range<u64>> for StacksBlockHeight {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &std::ops::Range<u64>, rng: &mut R) -> Self {
         // Overwriting config because values greater then i64::MAX will cause db conversion errors.
         let mut config = config.clone();
-        if config.end > i64::MAX as u64 {
+        if config.end > i64::MAX as u64 || config.start >= config.end {
             config.start = 0;
             config.end = i64::MAX as u64;
         }
@@ -538,13 +538,19 @@ impl fake::Dummy<std::ops::Range<u64>> for StacksBlockHeight {
 
 impl fake::Dummy<fake::Faker> for BitcoinBlockHeight {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        config.fake_with_rng(rng)
+        let x: u64 = config.fake_with_rng(rng);
+        let y: u64 = config.fake_with_rng(rng);
+        let range = std::cmp::min(x, y)..std::cmp::max(x, y);
+        range.fake_with_rng(rng)
     }
 }
 
 impl fake::Dummy<fake::Faker> for StacksBlockHeight {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        config.fake_with_rng(rng)
+        let x: u64 = config.fake_with_rng(rng);
+        let y: u64 = config.fake_with_rng(rng);
+        let range = std::cmp::min(x, y)..std::cmp::max(x, y);
+        range.fake_with_rng(rng)
     }
 }
 
