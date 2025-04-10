@@ -1,5 +1,4 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::num::NonZeroU8;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -354,17 +353,8 @@ impl<'a> SignerSwarmBuilder<'a> {
         // TCP transport configuration.
         let tcp_config = tcp::Config::default().nodelay(true);
 
-        // Set the dial concurrency factor to limit the number of concurrent dialing
-        // attempts. The default is 8, but we conservatively set it to 4, allowing
-        // a signer to simultaneously attempt to connect to enough peers to become
-        // well-connected while also reducing the impact of any potential connection
-        // amplification attacks.
-        let dial_concurrency_factor = NonZeroU8::new(4)
-            .ok_or_else(|| SignerSwarmError::Generic("failed to create dial concurrency factor"))?;
-
         // General swarm options
-        let swarm_config = libp2p::swarm::Config::with_tokio_executor()
-            .with_dial_concurrency_factor(dial_concurrency_factor); // Limits concurrent dialing operations
+        let swarm_config = libp2p::swarm::Config::with_tokio_executor();
 
         // Start building the transport with the TCP transport, which should always
         // be enabled.
