@@ -512,7 +512,7 @@ async fn complete_deposit_validation_fee_too_low() {
         r#"
         UPDATE deposit_requests AS dr
         SET amount = $1
-        WHERE 
+        WHERE
             dr.txid = $2
             AND dr.output_index = $3;
     "#,
@@ -553,7 +553,7 @@ async fn complete_deposit_validation_fee_too_low() {
         r#"
         UPDATE deposit_requests AS dr
         SET amount = $1
-        WHERE 
+        WHERE
             dr.txid = $2
             AND dr.output_index = $3;
     "#,

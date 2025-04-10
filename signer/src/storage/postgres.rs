@@ -449,7 +449,7 @@ impl PgStore {
               ON bo.txid = bi.txid
             JOIN sbtc_signer.bitcoin_transactions AS bt
               ON bt.txid = bi.txid
-            JOIN bitcoin_blockchain_until($1, $2) AS bb 
+            JOIN bitcoin_blockchain_until($1, $2) AS bb
               ON bb.block_hash = bt.block_hash
             WHERE bo.output_type = 'signers_output'
               AND bi.prevout_type = 'signers_input'
@@ -853,7 +853,7 @@ impl PgStore {
               , wr.block_hash   AS stacks_block_hash
               , sb.block_height AS stacks_block_height
             FROM sbtc_signer.withdrawal_requests AS wr
-            JOIN sbtc_signer.stacks_blocks AS sb 
+            JOIN sbtc_signer.stacks_blocks AS sb
               ON sb.block_hash = wr.block_hash
             LEFT JOIN sbtc_signer.withdrawal_signers AS ws
               ON ws.request_id = wr.request_id
@@ -885,7 +885,7 @@ impl PgStore {
     ) -> Result<Option<model::BitcoinTxRef>, Error> {
         sqlx::query_as::<_, model::BitcoinTxRef>(
             r#"
-            SELECT 
+            SELECT
                 bwo.bitcoin_txid AS txid
               , bt.block_hash
             FROM sbtc_signer.withdrawal_requests AS wr
@@ -1506,7 +1506,7 @@ impl super::DbRead for PgStore {
             -- get_pending_accepted_withdrawal_requests
             WITH recursive
 
-            -- Get all withdrawal requests which have a bitcoin block height 
+            -- Get all withdrawal requests which have a bitcoin block height
             -- of at least minimum height provided.
             requests AS (
                 SELECT
@@ -1532,7 +1532,7 @@ impl super::DbRead for PgStore {
                 -- Join in any rejection events we know about.
                 LEFT JOIN sbtc_signer.withdrawal_reject_events AS wre
                     ON wre.request_id = wr.request_id
-                
+
                 -- Only requests where the bitcoin height is >= than the minimum.
                 WHERE wr.bitcoin_block_height >= $3
             ),
@@ -1569,7 +1569,7 @@ impl super::DbRead for PgStore {
                 JOIN bitcoin_blockchain anchor
                     ON anchor.block_hash = parent.bitcoin_anchor
             )
-            
+
             -- Main select clause (what we're returning).
             SELECT
                 wr.request_id
@@ -1602,7 +1602,7 @@ impl super::DbRead for PgStore {
             LEFT JOIN stacks_blockchain AS canonical_reject
                 ON wr.reject_block_hash = canonical_reject.block_hash
 
-            GROUP BY 
+            GROUP BY
                 wr.request_id
               , wr.block_hash
               , wr.txid
@@ -1620,7 +1620,7 @@ impl super::DbRead for PgStore {
                 -- Ensure there are no confirmed reject contract-calls.
                 AND COUNT(canonical_reject.block_hash) = 0
 
-            ORDER BY 
+            ORDER BY
                 wr.request_id ASC
             "#,
         )
@@ -1708,7 +1708,7 @@ impl super::DbRead for PgStore {
             -- Request is expired
             WHERE wr.bitcoin_block_height < $4
 
-            -- we need to group since we could have multiple withdrawals 
+            -- we need to group since we could have multiple withdrawals
             -- outputs for a single request, and some of them may not be in
             -- the canonical chain, resulting in a NULL bc_trx.block_hash;
             -- so we group and check that all the rows have NULL
