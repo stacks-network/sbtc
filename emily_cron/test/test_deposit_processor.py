@@ -51,21 +51,9 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
             lock_time=50,  # Locktime of 50 blocks
         )
 
-        self.confirmed_expired_spent_confirmed = self._create_mock_deposit(
-            txid="confirmed_expired_spent_confirmed",
-            confirmed_height=890,  # Confirmed 110 blocks ago
-            lock_time=50,  # Locktime of 50 blocks
-        )
-
-        self.confirmed_active_unspent = self._create_mock_deposit(
-            txid="confirmed_active_unspent",
+        self.confirmed_active = self._create_mock_deposit(
+            txid="confirmed_active",
             confirmed_height=990,  # Confirmed 10 blocks ago (990 + 50 + 6 = 1046 > 1000)
-            lock_time=50,  # Locktime of 50 blocks
-        )
-
-        self.confirmed_active_spent = self._create_mock_deposit(
-            txid="confirmed_active_spent",
-            confirmed_height=990,  # Confirmed 10 blocks ago
             lock_time=50,  # Locktime of 50 blocks
         )
 
@@ -94,7 +82,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
     def test_no_failures(self):
         """Test case where no deposits should be marked as failed."""
         # Includes active deposits (spent and unspent) and unconfirmed
-        deposits = [self.confirmed_active_unspent, self.confirmed_active_spent, self.unconfirmed]
+        deposits = [self.confirmed_active, self.unconfirmed]
 
         updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip_height)
 
