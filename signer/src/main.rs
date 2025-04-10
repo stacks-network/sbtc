@@ -244,7 +244,7 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     let num_signers = ctx
         .state()
         .current_signer_set()
-        .len()
+        .num_signers()
         .try_into()
         .unwrap_or(signer::MAX_KEYS);
 

@@ -529,8 +529,7 @@ impl SignerSet {
     }
 
     /// Gets the number of signers in the current signer set.
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
+    pub fn num_signers(&self) -> usize {
         #[allow(clippy::expect_used)]
         self.signers
             .read()
