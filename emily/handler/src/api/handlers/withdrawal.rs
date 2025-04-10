@@ -1,4 +1,5 @@
 //! Handlers for withdrawal endpoints.
+use stacks_common::address::b58::from;
 use tracing::{debug, instrument};
 use warp::reply::{Reply, json, with_status};
 
@@ -345,7 +346,7 @@ pub async fn update_withdrawals_signer(
             return Err(Error::Forbidden);
         }
 
-        update_withdrawals(api_state, context, body).await
+        update_withdrawals(api_state, context, body, false).await
     }
     // Handle and respond.
     handler(context, body)
@@ -389,7 +390,7 @@ pub async fn update_withdrawals_sidecar(
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
-        update_withdrawals(api_state, context, body).await
+        update_withdrawals(api_state, context, body, true).await
     }
     // Handle and respond.
     handler(context, body)
@@ -401,6 +402,7 @@ async fn update_withdrawals(
     api_state: ApiStateEntry,
     context: EmilyContext,
     body: UpdateWithdrawalsRequestBody,
+    from_sidecar: bool,
 ) -> Result<impl warp::reply::Reply, Error> {
     // Validate request.
     let validated_request: ValidatedUpdateWithdrawalRequest =
@@ -416,7 +418,7 @@ async fn update_withdrawals(
         debug!(request_id, "updating withdrawal");
 
         let updated_withdrawal =
-            accessors::pull_and_update_withdrawal_with_retry(&context, update, 15, false)
+            accessors::pull_and_update_withdrawal_with_retry(&context, update, 15, from_sidecar)
                 .await
                 .inspect_err(|error| {
                     tracing::error!(

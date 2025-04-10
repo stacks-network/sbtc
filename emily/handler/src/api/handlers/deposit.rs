@@ -450,7 +450,7 @@ pub async fn update_deposits_signer(
             return Err(Error::Forbidden);
         }
 
-        update_deposits(api_state, context, body).await
+        update_deposits(api_state, context, body, false).await
     }
     // Handle and respond.
     handler(context, body)
@@ -494,7 +494,7 @@ pub async fn update_deposits_sidecar(
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
-        update_deposits(api_state, context, body).await
+        update_deposits(api_state, context, body, true).await
     }
     // Handle and respond.
     handler(context, body)
@@ -506,6 +506,7 @@ async fn update_deposits(
     api_state: ApiStateEntry,
     context: EmilyContext,
     body: UpdateDepositsRequestBody,
+    from_sidecar: bool,
 ) -> Result<impl warp::reply::Reply, Error> {
     // Validate request.
     let validated_request: ValidatedUpdateDepositsRequest =
@@ -527,7 +528,7 @@ async fn update_deposits(
         );
 
         let updated_deposit =
-            accessors::pull_and_update_deposit_with_retry(&context, update, 15, true)
+            accessors::pull_and_update_deposit_with_retry(&context, update, 15, from_sidecar)
                 .await
                 .inspect_err(|error| {
                     tracing::error!(
