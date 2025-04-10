@@ -23,10 +23,10 @@ use bitcoin::Witness;
 use bitcoin::key::TapTweak;
 use secp256k1::SECP256K1;
 
+use rand::CryptoRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand::rngs::{OsRng, StdRng};
-use rand::CryptoRng;
 
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::config::Settings;
