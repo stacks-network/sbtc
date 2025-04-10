@@ -25,6 +25,7 @@ use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
 use crate::database::entries::StatusEntry;
+use crate::database::entries::chainstate::ApiStateEntry;
 use crate::database::entries::deposit::{
     DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
     ValidatedUpdateDepositsRequest,
@@ -440,65 +441,16 @@ pub async fn update_deposits_signer(
         api_state.error_if_reorganizing()?;
 
         // Signers are only allowed to update deposits to the accepted state.
-        let is_unauthorized = body
+        let is_allowed = !body
             .deposits
             .iter()
             .any(|deposit| deposit.status != Status::Accepted);
 
-        if is_unauthorized {
+        if !is_allowed {
             return Err(Error::Forbidden);
         }
 
-        // Validate request.
-        let validated_request: ValidatedUpdateDepositsRequest =
-            body.try_into_validated_update_request(api_state.chaintip().into())?;
-
-        // Create aggregator.
-        let mut updated_deposits: Vec<(usize, Deposit)> =
-            Vec::with_capacity(validated_request.deposits.len());
-
-        // Loop through all updates and execute.
-        for (index, update) in validated_request.deposits {
-            let bitcoin_txid = update.key.bitcoin_txid.clone();
-            let bitcoin_tx_output_index = update.key.bitcoin_tx_output_index;
-
-            tracing::debug!(
-                %bitcoin_txid,
-                bitcoin_tx_output_index,
-                "updating deposit"
-            );
-
-            let updated_deposit =
-                accessors::pull_and_update_deposit_with_retry(&context, update, 15, false)
-                    .await
-                    .inspect_err(|error| {
-                        tracing::error!(
-                            %bitcoin_txid,
-                            bitcoin_tx_output_index,
-                            %error,
-                            "failed to update deposit"
-                        );
-                    })?;
-            let deposit: Deposit = updated_deposit.try_into().inspect_err(|error| {
-                // This should never happen, because the deposit was
-                // validated before being updated.
-                tracing::error!(
-                    %bitcoin_txid,
-                    bitcoin_tx_output_index,
-                    %error,
-                    "failed to convert deposit"
-                );
-            })?;
-            updated_deposits.push((index, deposit));
-        }
-
-        updated_deposits.sort_by_key(|(index, _)| *index);
-        let deposits = updated_deposits
-            .into_iter()
-            .map(|(_, deposit)| deposit)
-            .collect();
-        let response = UpdateDepositsResponse { deposits };
-        Ok(with_status(json(&response), StatusCode::CREATED))
+        update_deposits(api_state, context, body).await
     }
     // Handle and respond.
     handler(context, body)
@@ -542,61 +494,69 @@ pub async fn update_deposits_sidecar(
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
-        // Validate request.
-        let validated_request: ValidatedUpdateDepositsRequest =
-            body.try_into_validated_update_request(api_state.chaintip().into())?;
-
-        // Create aggregator.
-        let mut updated_deposits: Vec<(usize, Deposit)> =
-            Vec::with_capacity(validated_request.deposits.len());
-
-        // Loop through all updates and execute.
-        for (index, update) in validated_request.deposits {
-            let bitcoin_txid = update.key.bitcoin_txid.clone();
-            let bitcoin_tx_output_index = update.key.bitcoin_tx_output_index;
-
-            tracing::debug!(
-                %bitcoin_txid,
-                bitcoin_tx_output_index,
-                "updating deposit"
-            );
-
-            let updated_deposit =
-                accessors::pull_and_update_deposit_with_retry(&context, update, 15, true)
-                    .await
-                    .inspect_err(|error| {
-                        tracing::error!(
-                            %bitcoin_txid,
-                            bitcoin_tx_output_index,
-                            %error,
-                            "failed to update deposit"
-                        );
-                    })?;
-            let deposit: Deposit = updated_deposit.try_into().inspect_err(|error| {
-                // This should never happen, because the deposit was
-                // validated before being updated.
-                tracing::error!(
-                    %bitcoin_txid,
-                    bitcoin_tx_output_index,
-                    %error,
-                    "failed to convert deposit"
-                );
-            })?;
-            updated_deposits.push((index, deposit));
-        }
-
-        updated_deposits.sort_by_key(|(index, _)| *index);
-        let deposits = updated_deposits
-            .into_iter()
-            .map(|(_, deposit)| deposit)
-            .collect();
-        let response = UpdateDepositsResponse { deposits };
-        Ok(with_status(json(&response), StatusCode::CREATED))
+        update_deposits(api_state, context, body).await
     }
     // Handle and respond.
     handler(context, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+async fn update_deposits(
+    api_state: ApiStateEntry,
+    context: EmilyContext,
+    body: UpdateDepositsRequestBody,
+) -> Result<impl warp::reply::Reply, Error> {
+    // Validate request.
+    let validated_request: ValidatedUpdateDepositsRequest =
+        body.try_into_validated_update_request(api_state.chaintip().into())?;
+
+    // Create aggregator.
+    let mut updated_deposits: Vec<(usize, Deposit)> =
+        Vec::with_capacity(validated_request.deposits.len());
+
+    // Loop through all updates and execute.
+    for (index, update) in validated_request.deposits {
+        let bitcoin_txid = update.key.bitcoin_txid.clone();
+        let bitcoin_tx_output_index = update.key.bitcoin_tx_output_index;
+
+        tracing::debug!(
+            %bitcoin_txid,
+            bitcoin_tx_output_index,
+            "updating deposit"
+        );
+
+        let updated_deposit =
+            accessors::pull_and_update_deposit_with_retry(&context, update, 15, true)
+                .await
+                .inspect_err(|error| {
+                    tracing::error!(
+                        %bitcoin_txid,
+                        bitcoin_tx_output_index,
+                        %error,
+                        "failed to update deposit"
+                    );
+                })?;
+        let deposit: Deposit = updated_deposit.try_into().inspect_err(|error| {
+            // This should never happen, because the deposit was
+            // validated before being updated.
+            tracing::error!(
+                %bitcoin_txid,
+                bitcoin_tx_output_index,
+                %error,
+                "failed to convert deposit"
+            );
+        })?;
+        updated_deposits.push((index, deposit));
+    }
+
+    updated_deposits.sort_by_key(|(index, _)| *index);
+    let deposits = updated_deposits
+        .into_iter()
+        .map(|(_, deposit)| deposit)
+        .collect();
+    let response = UpdateDepositsResponse { deposits };
+    Ok(with_status(json(&response), StatusCode::CREATED))
 }
 
 const OP_DROP: u8 = opcodes::OP_DROP.to_u8();

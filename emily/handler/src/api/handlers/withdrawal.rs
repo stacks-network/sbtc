@@ -13,6 +13,7 @@ use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
 use crate::database::entries::StatusEntry;
+use crate::database::entries::chainstate::ApiStateEntry;
 use crate::database::entries::withdrawal::{
     ValidatedUpdateWithdrawalRequest, WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent,
     WithdrawalParametersEntry,
@@ -344,49 +345,7 @@ pub async fn update_withdrawals_signer(
             return Err(Error::Forbidden);
         }
 
-        // Validate request.
-        let validated_request: ValidatedUpdateWithdrawalRequest =
-            body.try_into_validated_update_request(api_state.chaintip().into())?;
-
-        // Create aggregator.
-        let mut updated_withdrawals: Vec<(usize, Withdrawal)> =
-            Vec::with_capacity(validated_request.withdrawals.len());
-
-        // Loop through all updates and execute.
-        for (index, update) in validated_request.withdrawals {
-            let request_id = update.request_id;
-            debug!(request_id, "updating withdrawal");
-
-            let updated_withdrawal =
-                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15, false)
-                    .await
-                    .inspect_err(|error| {
-                        tracing::error!(
-                            request_id,
-                            %error,
-                            "failed to update withdrawal",
-                        );
-                    })?;
-
-            let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
-                // This should never happen, because the withdrawal was
-                // validated before being updated.
-                tracing::error!(
-                    request_id,
-                    %error,
-                    "failed to convert updated withdrawal",
-                );
-            })?;
-
-            updated_withdrawals.push((index, withdrawal));
-        }
-        updated_withdrawals.sort_by_key(|(index, _)| *index);
-        let withdrawals = updated_withdrawals
-            .into_iter()
-            .map(|(_, withdrawal)| withdrawal)
-            .collect();
-        let response = UpdateWithdrawalsResponse { withdrawals };
-        Ok(with_status(json(&response), StatusCode::CREATED))
+        update_withdrawals(api_state, context, body).await
     }
     // Handle and respond.
     handler(context, body)
@@ -430,54 +389,62 @@ pub async fn update_withdrawals_sidecar(
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
-        // Validate request.
-        let validated_request: ValidatedUpdateWithdrawalRequest =
-            body.try_into_validated_update_request(api_state.chaintip().into())?;
-
-        // Create aggregator.
-        let mut updated_withdrawals: Vec<(usize, Withdrawal)> =
-            Vec::with_capacity(validated_request.withdrawals.len());
-
-        // Loop through all updates and execute.
-        for (index, update) in validated_request.withdrawals {
-            let request_id = update.request_id;
-            debug!(request_id, "updating withdrawal");
-
-            let updated_withdrawal =
-                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15, true)
-                    .await
-                    .inspect_err(|error| {
-                        tracing::error!(
-                            request_id,
-                            %error,
-                            "failed to update withdrawal",
-                        );
-                    })?;
-
-            let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
-                // This should never happen, because the withdrawal was
-                // validated before being updated.
-                tracing::error!(
-                    request_id,
-                    %error,
-                    "failed to convert updated withdrawal",
-                );
-            })?;
-
-            updated_withdrawals.push((index, withdrawal));
-        }
-        updated_withdrawals.sort_by_key(|(index, _)| *index);
-        let withdrawals = updated_withdrawals
-            .into_iter()
-            .map(|(_, withdrawal)| withdrawal)
-            .collect();
-        let response = UpdateWithdrawalsResponse { withdrawals };
-        Ok(with_status(json(&response), StatusCode::CREATED))
+        update_withdrawals(api_state, context, body).await
     }
     // Handle and respond.
     handler(context, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+async fn update_withdrawals(
+    api_state: ApiStateEntry,
+    context: EmilyContext,
+    body: UpdateWithdrawalsRequestBody,
+) -> Result<impl warp::reply::Reply, Error> {
+    // Validate request.
+    let validated_request: ValidatedUpdateWithdrawalRequest =
+        body.try_into_validated_update_request(api_state.chaintip().into())?;
+
+    // Create aggregator.
+    let mut updated_withdrawals: Vec<(usize, Withdrawal)> =
+        Vec::with_capacity(validated_request.withdrawals.len());
+
+    // Loop through all updates and execute.
+    for (index, update) in validated_request.withdrawals {
+        let request_id = update.request_id;
+        debug!(request_id, "updating withdrawal");
+
+        let updated_withdrawal =
+            accessors::pull_and_update_withdrawal_with_retry(&context, update, 15, false)
+                .await
+                .inspect_err(|error| {
+                    tracing::error!(
+                        request_id,
+                        %error,
+                        "failed to update withdrawal",
+                    );
+                })?;
+
+        let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
+            // This should never happen, because the withdrawal was
+            // validated before being updated.
+            tracing::error!(
+                request_id,
+                %error,
+                "failed to convert updated withdrawal",
+            );
+        })?;
+
+        updated_withdrawals.push((index, withdrawal));
+    }
+    updated_withdrawals.sort_by_key(|(index, _)| *index);
+    let withdrawals = updated_withdrawals
+        .into_iter()
+        .map(|(_, withdrawal)| withdrawal)
+        .collect();
+    let response = UpdateWithdrawalsResponse { withdrawals };
+    Ok(with_status(json(&response), StatusCode::CREATED))
 }
 
 // TODO(393): Add handler unit tests.
