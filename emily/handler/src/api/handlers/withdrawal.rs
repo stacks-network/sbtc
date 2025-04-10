@@ -1,5 +1,4 @@
 //! Handlers for withdrawal endpoints.
-use stacks_common::address::b58::from;
 use tracing::{debug, instrument};
 use warp::reply::{Reply, json, with_status};
 
