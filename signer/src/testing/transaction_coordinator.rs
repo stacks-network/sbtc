@@ -51,8 +51,8 @@ use clarity::vm::types::BuffData;
 use clarity::vm::types::SequenceData;
 use fake::Fake as _;
 use fake::Faker;
-use rand::seq::IteratorRandom;
 use rand::SeedableRng;
+use rand::seq::IteratorRandom;
 
 use super::context::TestContext;
 use super::context::WrappedMock;
