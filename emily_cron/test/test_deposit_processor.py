@@ -662,7 +662,7 @@ class TestDepositProcessorIntegration(unittest.TestCase):
         # Reclaim locktime (from 60b2...) is 96 blocks (0x60)
         # Confirmation height is 675229. MIN_CONFIRMATIONS is 6.
         # Expiry height = 675229 + 96 + 6 = 675331
-        self.bitcoin_chaintip_height = 675400  # Well past expiry
+        self.bitcoin_chaintip_height = 678410  # Well past expiry
         settings.MIN_BLOCK_CONFIRMATIONS = 6
         self.stacks_chaintip = BlockInfo(
             height=2000, hash="stx_hash_int", time=int(datetime.now().timestamp())
@@ -742,8 +742,8 @@ class TestDepositProcessorIntegration(unittest.TestCase):
         # --- Mock Setup ---
         # Set chaintip high enough that time *would* expire if not spent
         # Locktime (from 02b6...) = 950 blocks. Confirmed = 678404. MIN_CONF = 6
-        # Expiry height = 678404 + 950 + 6 = 679360
-        self.bitcoin_chaintip_height = 679400  # Past expiry time
+        # Current chaintip = 678410
+        # Expiry height = 678404 + 950 + 6 = 679360  # expired
         mock_btc_tip_height.return_value = self.bitcoin_chaintip_height
         mock_stacks_block.return_value = self.stacks_chaintip
 
