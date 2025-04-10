@@ -1402,7 +1402,7 @@ impl TryFrom<BitcoinBlockHeight> for i64 {
 impl TryFrom<i64> for BitcoinBlockHeight {
     type Error = TryFromIntError;
     fn try_from(value: i64) -> Result<Self, Self::Error> {
-        Ok(Self(<u64>::try_from(value)?))
+        u64::try_from(value).map(Self)
     }
 }
 
@@ -1512,7 +1512,7 @@ impl TryFrom<StacksBlockHeight> for i64 {
 impl TryFrom<i64> for StacksBlockHeight {
     type Error = TryFromIntError;
     fn try_from(value: i64) -> Result<Self, Self::Error> {
-        Ok(Self(<u64>::try_from(value)?))
+        u64::try_from(value).map(Self)
     }
 }
 
