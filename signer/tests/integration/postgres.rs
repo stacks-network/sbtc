@@ -1190,7 +1190,6 @@ async fn writing_withdrawal_accept_requests_postgres() {
     let event: WithdrawalAcceptEvent = fake::Faker.fake_with_rng(&mut rng);
 
     // Let's see if we can write these rows to the database.
-    eprintln!("{:#?}", event.clone());
     store.write_withdrawal_accept_event(&event).await.unwrap();
     let mut db_event =
         sqlx::query_as::<_, ([u8; 32], [u8; 32], i64, [u8; 16], [u8; 32], i64, i64)>(
