@@ -11,7 +11,7 @@ permissions: read-all
 concurrency:
   # Ensure that this workflow only runs once at a time for each PR or push,
   # cancelling any in-progress runs for the same HEAD (PR) or branch (Push).
-  group: push-pr-${{ github.head_ref || github.ref }}
+  group: push-pr-${{ github.head_ref || github.ref_name || github.run_id}}
   cancel-in-progress: true
 
 env:
