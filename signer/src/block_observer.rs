@@ -217,6 +217,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     #[tracing::instrument(skip_all)]
     pub async fn load_requests(&self, requests: &[CreateDepositRequest]) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
+        let mut deposit_request_txs = Vec::new();
         let bitcoin_client = self.context.get_bitcoin_client();
         let is_mainnet = self.context.config().signer.network.is_mainnet();
 
@@ -228,24 +229,25 @@ impl<C: Context, B> BlockObserver<C, B> {
 
             // We log the error above, so we just need to extract the
             // deposit now.
-            let deposit_status = match deposit {
-                Ok(Some(deposit)) => {
-                    deposit_requests.push(deposit);
-                    "success"
-                }
-                Ok(None) => "unconfirmed",
-                Err(_) => "failed",
+            Metrics::increment_deposit_total(&deposit);
+            let Ok(Some(deposit)) = deposit else { continue };
+
+            self.process_bitcoin_blocks_until(deposit.tx_info.block_hash)
+                .await?;
+
+            let tx = model::Transaction {
+                txid: deposit.tx_info.txid.to_byte_array(),
+                tx_type: model::TransactionType::DepositRequest,
+                block_hash: deposit.tx_info.block_hash.to_byte_array(),
             };
 
-            metrics::counter!(
-                Metrics::DepositRequestsTotal,
-                "blockchain" => BITCOIN_BLOCKCHAIN,
-                "status" => deposit_status,
-            )
-            .increment(1);
+            deposit_requests.push(model::DepositRequest::from(deposit));
+            deposit_request_txs.push(tx);
         }
 
-        self.store_deposit_requests(deposit_requests).await?;
+        let db = self.context.get_storage_mut();
+        db.write_bitcoin_transactions(deposit_request_txs).await?;
+        db.write_deposit_requests(deposit_requests).await?;
 
         tracing::debug!("finished processing deposit requests");
         Ok(())
@@ -390,49 +392,6 @@ impl<C: Context, B> BlockObserver<C, B> {
         self.write_stacks_blocks(&stacks_blocks).await?;
 
         tracing::debug!("finished processing stacks block");
-        Ok(())
-    }
-
-    /// For each of the deposit requests, persist the corresponding
-    /// transaction and the parsed deposit info into the database.
-    ///
-    /// This function does three things:
-    /// 1. For all deposit requests, check to see if there are bitcoin
-    ///    blocks that we do not have in our database.
-    /// 2. If we do not have a record of the bitcoin block then write it
-    ///    to the database.
-    /// 3. Write the deposit transaction and the extracted deposit info
-    ///    into the database.
-    async fn store_deposit_requests(&self, requests: Vec<Deposit>) -> Result<(), Error> {
-        // We need to check to see if we have a record of the bitcoin block
-        // that contains the deposit request in our database. If we don't
-        // then write them to our database.
-        for deposit in requests.iter() {
-            self.process_bitcoin_blocks_until(deposit.tx_info.block_hash)
-                .await?;
-        }
-
-        // Okay now we write the deposit requests and the transactions to
-        // the database.
-        let (deposit_requests, deposit_request_txs) = requests
-            .into_iter()
-            .map(|deposit| {
-                let tx = model::Transaction {
-                    txid: deposit.tx_info.txid.to_byte_array(),
-                    tx_type: model::TransactionType::DepositRequest,
-                    block_hash: deposit.tx_info.block_hash.to_byte_array(),
-                };
-
-                (model::DepositRequest::from(deposit), tx)
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .unzip();
-
-        let db = self.context.get_storage_mut();
-        db.write_bitcoin_transactions(deposit_request_txs).await?;
-        db.write_deposit_requests(deposit_requests).await?;
-
         Ok(())
     }
 
