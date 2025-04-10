@@ -441,10 +441,16 @@ impl<C: Context, B> BlockObserver<C, B> {
             // through all of the transactions within that block. This
             // means the `get_tx_info` call below should not fail.
             let txid = tx.compute_txid();
-            let tx_info = btc_rpc
-                .get_tx_info(&txid, &block_hash)
-                .await?
-                .ok_or(Error::BitcoinTxMissing(txid, None))?;
+
+            let tx_info_result = btc_rpc.get_tx_info(&txid, &block_hash).await;
+
+            // If the tx is coinbase, we just ignore it.
+            if let Err(err @ Error::BitcoinTxCoinbase(_, _)) = tx_info_result {
+                tracing::warn!(%err, "ignoring coinbase tx when extracting sbtc transaction");
+                continue;
+            }
+
+            let tx_info = tx_info_result?.ok_or(Error::BitcoinTxMissing(txid, None))?;
 
             // sBTC transactions have as first txin a signers spendable output
             let tx_type = if tx_info.is_signer_created(&signer_script_pubkeys) {
