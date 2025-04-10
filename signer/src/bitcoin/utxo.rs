@@ -1,7 +1,6 @@
 //! Utxo management and transaction construction
 
 use std::collections::HashSet;
-use std::ops::Deref as _;
 use std::sync::LazyLock;
 
 use bitcoin::Amount;
@@ -50,7 +49,6 @@ use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
-use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::ScriptPubKey;
@@ -1360,12 +1358,6 @@ impl BitcoinInputsOutputs for Transaction {
 impl BitcoinInputsOutputs for UnsignedTransaction<'_> {
     fn tx_ref(&self) -> &Transaction {
         &self.tx
-    }
-}
-
-impl BitcoinInputsOutputs for BitcoinTx {
-    fn tx_ref(&self) -> &Transaction {
-        self.deref()
     }
 }
 

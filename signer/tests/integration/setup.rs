@@ -5,7 +5,6 @@ use std::ops::Deref;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::RpcApi as _;
@@ -283,7 +282,6 @@ impl TestSweepSetup {
     /// Store the deposit transaction into the database
     pub async fn store_deposit_tx(&self, db: &PgStore) {
         let deposit_tx = model::Transaction {
-            tx: bitcoin::consensus::serialize(&self.deposit_tx_info.tx),
             txid: self.deposit_tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: self.deposit_block_hash.to_byte_array(),
@@ -301,7 +299,6 @@ impl TestSweepSetup {
     /// into the database
     pub async fn store_sweep_tx(&self, db: &PgStore) {
         let sweep_tx = model::Transaction {
-            tx: bitcoin::consensus::serialize(&self.sweep_tx_info.tx),
             txid: self.sweep_tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: self.sweep_block_hash.to_byte_array(),
@@ -472,10 +469,6 @@ pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
         },
     );
     let signer_utxo_txid = signer_utxo_tx.compute_txid();
-    let mut signer_utxo_encoded = Vec::new();
-    signer_utxo_tx
-        .consensus_encode(&mut signer_utxo_encoded)
-        .unwrap();
 
     let utxo_input = model::TxPrevout {
         txid: signer_utxo_txid.into(),
@@ -494,7 +487,6 @@ pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
     db.write_bitcoin_block(&bitcoin_block).await.unwrap();
     db.write_transaction(&model::Transaction {
         txid: *signer_utxo_txid.as_byte_array(),
-        tx: signer_utxo_encoded,
         tx_type: model::TransactionType::SbtcTransaction,
         block_hash: bitcoin_block.block_hash.into_bytes(),
     })
@@ -519,10 +511,6 @@ pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
         },
     );
     let signer_utxo_txid = signer_utxo_tx.compute_txid();
-    let mut signer_utxo_encoded = Vec::new();
-    signer_utxo_tx
-        .consensus_encode(&mut signer_utxo_encoded)
-        .unwrap();
 
     let utxo_input = model::TxPrevout {
         txid: signer_utxo_txid.into(),
@@ -541,7 +529,6 @@ pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
     db.write_bitcoin_block(&bitcoin_block).await.unwrap();
     db.write_transaction(&model::Transaction {
         txid: *signer_utxo_txid.as_byte_array(),
-        tx: signer_utxo_encoded,
         tx_type: model::TransactionType::SbtcTransaction,
         block_hash: bitcoin_block.block_hash.into_bytes(),
     })
@@ -1008,7 +995,6 @@ impl TestSweepSetup2 {
     pub async fn store_deposit_txs(&self, db: &PgStore) {
         for (_, _, tx_info) in self.deposits.iter() {
             let deposit_tx = model::Transaction {
-                tx: bitcoin::consensus::serialize(&tx_info.tx),
                 txid: tx_info.txid.to_byte_array(),
                 tx_type: model::TransactionType::SbtcTransaction,
                 block_hash: self.deposit_block_hash.to_byte_array(),
@@ -1095,7 +1081,6 @@ impl TestSweepSetup2 {
         let sweep = self.sweep_tx_info.as_ref().expect("no sweep tx info set");
 
         let sweep_tx = model::Transaction {
-            tx: bitcoin::consensus::serialize(&sweep.tx_info.tx),
             txid: sweep.tx_info.txid.to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: sweep.block_hash.to_byte_array(),

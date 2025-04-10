@@ -88,7 +88,6 @@ impl TestRotateKeySetup {
 
         let raw_tx = Transaction {
             txid: fake::Faker.fake_with_rng(rng),
-            tx: Vec::new(),
             tx_type: TransactionType::RotateKeys,
             block_hash: stacks_chain_tip.block_hash.into_bytes(),
         };
