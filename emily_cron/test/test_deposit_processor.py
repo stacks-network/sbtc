@@ -51,12 +51,6 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
             lock_time=50,  # Locktime of 50 blocks
         )
 
-        self.confirmed_expired_spent_mempool = self._create_mock_deposit(
-            txid="confirmed_expired_spent_mempool",
-            confirmed_height=890,  # Confirmed 110 blocks ago
-            lock_time=50,  # Locktime of 50 blocks
-        )
-
         self.confirmed_expired_spent_confirmed = self._create_mock_deposit(
             txid="confirmed_expired_spent_confirmed",
             confirmed_height=890,  # Confirmed 110 blocks ago
@@ -129,6 +123,12 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
     def test_no_failure_expired_spent_signer(self):
         """Test case where locktime passed, but UTXO is spent (signer sweep), so it should NOT fail."""
         # Mock UTXO status (spent) and spending tx (no reclaim script)
+        confirmed_expired_spent_mempool = self._create_mock_deposit(
+            txid="confirmed_expired_spent_mempool",
+            confirmed_height=890,  # Confirmed 110 blocks ago
+            lock_time=50,  # Locktime of 50 blocks
+        )
+
         utxo_status_spent = {
             "spent": True,
             "txid": "signer_sweep_tx",
@@ -139,8 +139,8 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
             "txid": "signer_sweep_tx",
             "vin": [
                 {
-                    "txid": self.confirmed_expired_spent_mempool.bitcoin_txid,
-                    "vout": self.confirmed_expired_spent_mempool.bitcoin_tx_output_index,
+                    "txid": confirmed_expired_spent_mempool.bitcoin_txid,
+                    "vout": confirmed_expired_spent_mempool.bitcoin_tx_output_index,
                     "witness": ["signer_sig1", "signer_sig2"],  # Does NOT contain reclaim script
                 }
             ],
