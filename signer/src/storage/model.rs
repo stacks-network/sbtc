@@ -1372,8 +1372,9 @@ impl From<usize> for BitcoinBlockHeight {
     }
 }
 
-// Conversion u64 => StacksBlockHeight is not implemented intentionally.
+// Conversion BitcoinBlockHeight => u64  is not implemented intentionally.
 // Use deref instead.
+// This was done for consistency across the codebase.
 
 impl From<BitcoinBlockHeight> for u128 {
     fn from(value: BitcoinBlockHeight) -> Self {
@@ -1424,8 +1425,6 @@ impl Add for BitcoinBlockHeight {
         Self(self.0.add(other.0))
     }
 }
-
-// I don't see any case where int - height can make sense.
 
 impl Sub<u64> for BitcoinBlockHeight {
     // Height - int is still height.
@@ -1482,8 +1481,9 @@ impl From<usize> for StacksBlockHeight {
     }
 }
 
-// Conversion u64 => StacksBlockHeight is not implemented intentionally.
+// Conversion StacksBlockHeight => u64  is not implemented intentionally.
 // Use deref instead.
+// This was done for consistency across the codebase.
 
 impl From<StacksBlockHeight> for u128 {
     fn from(value: StacksBlockHeight) -> Self {
@@ -1534,8 +1534,6 @@ impl Add for StacksBlockHeight {
         Self(self.0.add(other.0))
     }
 }
-
-// I don't see any case where int - height can make sense.
 
 impl Sub<u64> for StacksBlockHeight {
     // Height - int is still height.
