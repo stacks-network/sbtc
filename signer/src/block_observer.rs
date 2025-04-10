@@ -90,6 +90,10 @@ impl DepositRequestValidator for CreateDepositRequest {
             return Ok(None);
         };
 
+        if response.tx.is_coinbase() {
+            return Err(Error::BitcoinTxCoinbase(self.outpoint.txid));
+        }
+
         // The `get_tx_info` call here should not return None, we know that
         // it has been included in a block.
         let Some(tx_info) = client.get_tx_info(&self.outpoint.txid, &block_hash).await? else {
@@ -436,21 +440,20 @@ impl<C: Context, B> BlockObserver<C, B> {
                 continue;
             }
 
+            let txid = tx.compute_txid();
+            if tx.is_coinbase() {
+                tracing::warn!(%txid, "ignoring coinbase tx when extracting sbtc transaction");
+                continue;
+            }
+
             // This function is called after we have received a
             // notification of a bitcoin block, and we are iterating
             // through all of the transactions within that block. This
             // means the `get_tx_info` call below should not fail.
-            let txid = tx.compute_txid();
-
-            let tx_info_result = btc_rpc.get_tx_info(&txid, &block_hash).await;
-
-            // If the tx is coinbase, we just ignore it.
-            if let Err(err @ Error::BitcoinTxCoinbase(_, _)) = tx_info_result {
-                tracing::warn!(%err, "ignoring coinbase tx when extracting sbtc transaction");
-                continue;
-            }
-
-            let tx_info = tx_info_result?.ok_or(Error::BitcoinTxMissing(txid, None))?;
+            let tx_info = btc_rpc
+                .get_tx_info(&txid, &block_hash)
+                .await?
+                .ok_or(Error::BitcoinTxMissing(txid, None))?;
 
             // sBTC transactions have as first txin a signers spendable output
             let tx_type = if tx_info.is_signer_created(&signer_script_pubkeys) {

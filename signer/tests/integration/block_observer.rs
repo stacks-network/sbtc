@@ -1624,7 +1624,7 @@ async fn block_observer_ignores_coinbase() {
     let validate_result =
         signer::block_observer::DepositRequestValidator::validate(&request, &bitcoin_client, false);
     match validate_result.await {
-        Err(Error::BitcoinTxCoinbase(tx, _)) if tx == deposit_request.outpoint.txid => {}
+        Err(Error::BitcoinTxCoinbase(tx)) if tx == deposit_request.outpoint.txid => {}
         _ => panic!("Expected a err, got something else"),
     }
 

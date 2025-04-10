@@ -178,8 +178,8 @@ pub enum Error {
     BitcoinTxMissing(bitcoin::Txid, Option<bitcoin::BlockHash>),
 
     /// The bitcoin transaction is a coinbase (that we don't support)
-    #[error("transaction is coinbase, txid: {0}, block hash {1:?}")]
-    BitcoinTxCoinbase(bitcoin::Txid, Option<bitcoin::BlockHash>),
+    #[error("transaction is coinbase, txid: {0}")]
+    BitcoinTxCoinbase(bitcoin::Txid),
 
     /// This is the error that is returned when validating a bitcoin
     /// transaction.

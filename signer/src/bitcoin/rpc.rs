@@ -132,21 +132,6 @@ pub struct BitcoinTxInfo {
     pub block_time: u64,
 }
 
-/// Slim version of `BitcoinTxVin` for coinbase check
-#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-struct BitcoinCoinbaseTxVin {
-    /// Most of the details to the input into the transaction
-    #[serde(flatten)]
-    pub details: GetRawTransactionResultVin,
-}
-
-/// Slim version of `BitcoinTxInfo` for coinbase check
-#[derive(Clone, PartialEq, Eq, Debug, serde::Deserialize, serde::Serialize)]
-struct BitcoinCoinbaseTxInfo {
-    /// The inputs into the transaction.
-    pub vin: Vec<BitcoinCoinbaseTxVin>,
-}
-
 /// A slimmed down version of the `BitcoinTxInfo` struct which only contains the
 /// `fee`, `vsize`, and `confirmations` fields; used in fee-retrieval contexts.
 #[derive(Debug, Clone, Deserialize)]
@@ -418,31 +403,8 @@ impl BitcoinCoreClient {
             // in the provided block. Use `gettransaction` for wallet
             // transactions." In both cases the code is the same.
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
-            Err(err) => {
-                // If the transaction is coinbase, return a specific error.
-                // Such transactions fail decoding with missing `prevout`, and
-                // here we filter for such decoding errors before calling
-                // `is_coinbase`.
-                if matches!(err,
-                    BtcRpcError::JsonRpc(JsonRpcError::Json(ref json_err))
-                        if json_err.classify() == serde_json::error::Category::Data)
-                    && self.is_coinbase(&args).unwrap_or(false)
-                {
-                    Err(Error::BitcoinTxCoinbase(*txid, Some(*block_hash)))
-                } else {
-                    Err(Error::BitcoinCoreGetTransaction(err, *txid))
-                }
-            }
+            Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
         }
-    }
-
-    /// Repeat the `get_tx_info` rpc call with a slim data model to check if the
-    /// transaction queried for is a coinbase tx.
-    fn is_coinbase(&self, args: &[serde_json::Value]) -> Option<bool> {
-        self.inner
-            .call::<BitcoinCoinbaseTxInfo>("getrawtransaction", args)
-            .map(|res| res.vin.iter().any(|vin| vin.details.coinbase.is_some()))
-            .ok()
     }
 
     /// Fetch and decode raw transaction from bitcoin-core using the
