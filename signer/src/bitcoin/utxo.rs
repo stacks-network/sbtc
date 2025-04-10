@@ -1,7 +1,6 @@
 //! Utxo management and transaction construction
 
 use std::collections::HashSet;
-use std::ops::Deref as _;
 use std::sync::LazyLock;
 
 use bitcoin::Amount;
@@ -50,7 +49,6 @@ use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
-use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::ScriptPubKey;
@@ -156,7 +154,7 @@ impl<'a> RequestPreprocessor<'a> {
 
     /// Validate deposit requests based on four constraints:
     /// 1. The user's max fee must be >= our minimum required fee for deposits
-    ///     (based on fixed deposit tx size)
+    ///    (based on fixed deposit tx size)
     /// 2. The deposit amount must be greater than or equal to the per-deposit minimum
     /// 3. The deposit amount must be less than or equal to the per-deposit cap
     /// 4. The total amount being minted must stay under the peg cap
@@ -195,8 +193,8 @@ impl<'a> RequestPreprocessor<'a> {
 
     /// Validate withdrawal requests based on three constraints:
     /// 1. The user's max fee must be >= our minimum required fee for
-    ///     withdrawals (based on the max transaction size for the allowed
-    ///     scriptPubKeys).
+    ///    withdrawals (based on the max transaction size for the allowed
+    ///    scriptPubKeys).
     /// 2. The withdrawal amount must be less than or equal to the
     ///    per-withdrawal cap.
     /// 3. The total amount being withdrawn must stay under the rolling
@@ -1360,12 +1358,6 @@ impl BitcoinInputsOutputs for Transaction {
 impl BitcoinInputsOutputs for UnsignedTransaction<'_> {
     fn tx_ref(&self) -> &Transaction {
         &self.tx
-    }
-}
-
-impl BitcoinInputsOutputs for BitcoinTx {
-    fn tx_ref(&self) -> &Transaction {
-        self.deref()
     }
 }
 
