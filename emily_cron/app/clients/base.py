@@ -29,10 +29,16 @@ class APIClient:
             params: Optional query parameters
             json_data: Optional JSON data for request body
             headers: Optional HTTP headers
-            ignore_errors: If True, logs errors and returns empty dict
+            ignore_errors: If True, logs errors and returns empty dict.
+                           If False, raises exceptions for HTTP errors (400-599).
+                           Set to False when the response is critical for further processing.
 
         Returns:
-            Parsed JSON response or empty dict on error
+            Parsed JSON response or empty dict on error (if ignore_errors is True)
+
+        Raises:
+            requests.RequestException: If the request fails (HTTP 400-599) (if ignore_errors is False)
+            ValueError: If the response cannot be parsed as JSON (if ignore_errors is False)
         """
         url = f"{cls.BASE_URL}{endpoint}"
 

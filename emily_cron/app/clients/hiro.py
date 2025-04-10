@@ -55,11 +55,18 @@ class HiroAPI(APIClient):
     def _get_stacks_block_cached(cls, height_or_hash: int | str) -> dict[str, Any]:
         """Cached version of get_stacks_block for non-latest queries.
 
+        Errors are not ignored (ignore_errors=False) because block data is critical
+        for processing deposits and determining chain state.
+
         Args:
             height_or_hash: Block height or hash
 
         Returns:
             dict: Block information
+
+        Raises:
+            requests.RequestException: If the request fails (HTTP 400-599)
+            ValueError: If the response cannot be parsed as JSON
         """
         return cls.get(f"/extended/v2/blocks/{height_or_hash}", ignore_errors=False)
 
@@ -68,12 +75,18 @@ class HiroAPI(APIClient):
         """Fetch the Stacks block at a given height or hash.
 
         Uses LRU cache for all queries except when height_or_hash is "latest".
+        Errors are not ignored (ignore_errors=False) because block data is critical
+        for processing deposits and determining chain state.
 
         Args:
             height_or_hash: Block height, block hash, or "latest"
 
         Returns:
             BlockInfo: Block information
+
+        Raises:
+            requests.RequestException: If the request fails (HTTP 400-599)
+            ValueError: If the response cannot be parsed as JSON
         """
         if height_or_hash == "latest":
             # Don't cache "latest" queries

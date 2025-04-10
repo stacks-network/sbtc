@@ -16,8 +16,15 @@ class MempoolAPI(APIClient):
     def get_tip_height(cls) -> int:
         """Get the height of the tip of the Bitcoin chain.
 
+        Errors are not ignored (ignore_errors=False) because tip height
+        is critical for processing deposits and determining chain state.
+
         Returns:
             int: The height of the tip of the Bitcoin chain
+
+        Raises:
+            requests.RequestException: If the request fails (HTTP 400-599)
+            ValueError: If the response cannot be parsed as JSON
         """
         return cls.get("/v1/blocks/tip/height", ignore_errors=False)
 
