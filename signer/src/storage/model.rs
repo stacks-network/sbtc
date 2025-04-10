@@ -149,7 +149,6 @@ pub struct StacksBlock {
     /// Block hash.
     pub block_hash: StacksBlockHash,
     /// Block height.    
-    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     pub block_height: StacksBlockHeight,
     /// Hash of the parent block.
     pub parent_hash: StacksBlockHash,
@@ -312,7 +311,6 @@ pub struct WithdrawalRequest {
     pub sender_address: StacksPrincipal,
     /// The block height of the bitcoin blockchain when the stacks
     /// transaction that emitted this event was executed.
-    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     pub bitcoin_block_height: BitcoinBlockHeight,
 }
 
@@ -911,7 +909,6 @@ impl std::fmt::Display for BitcoinBlockHash {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlockRef {
     /// The height of the block in the bitcoin blockchain.
-    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     pub block_height: BitcoinBlockHeight,
     /// Bitcoin block hash. It uniquely identifies the bitcoin block.
     pub block_hash: BitcoinBlockHash,
