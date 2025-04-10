@@ -1578,7 +1578,6 @@ impl StacksBlockHeight {
     Deserialize,
     sqlx::FromRow,
 )]
-#[sqlx(transparent)]
 pub struct BitcoinBlockHeight(u64);
 /// Stacks block height
 #[derive(
@@ -1595,7 +1594,6 @@ pub struct BitcoinBlockHeight(u64);
     Deserialize,
     sqlx::FromRow,
 )]
-#[sqlx(transparent)]
 pub struct StacksBlockHeight(u64);
 
 #[cfg(test)]
