@@ -435,7 +435,7 @@ impl PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(*min_block_height as i32)
+        .bind(i64::try_from(min_block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(output_type)
         .fetch_optional(&self.0)
         .await
@@ -469,7 +469,7 @@ impl PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(*min_block_height as i64)
+        .bind(i64::try_from(min_block_height).map_err(Error::ConversionDatabaseInt)?)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
