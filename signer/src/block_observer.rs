@@ -792,11 +792,7 @@ mod tests {
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
             .modify_settings(|settings| {
-                settings.signer.sbtc_bitcoin_start_height = match min_height {
-                    Some(h) => Some(h.into()),
-                    None => None,
-                }
-            })
+                settings.signer.sbtc_bitcoin_start_height = min_height.map(Into::into)})
             .build();
 
         // There must be at least one signal receiver alive when the block observer
@@ -935,10 +931,7 @@ mod tests {
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
             .modify_settings(|settings| {
-                settings.signer.sbtc_bitcoin_start_height = match min_height {
-                    Some(h) => Some(h.into()),
-                    None => None,
-                }
+                settings.signer.sbtc_bitcoin_start_height = min_height.map(Into::into)
             })
             .build();
 
@@ -1025,10 +1018,7 @@ mod tests {
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
             .modify_settings(|settings| {
-                settings.signer.sbtc_bitcoin_start_height = match min_height {
-                    Some(h) => Some(h.into()),
-                    None => None,
-                }
+                settings.signer.sbtc_bitcoin_start_height = min_height.map(Into::into)
             })
             .build();
 
