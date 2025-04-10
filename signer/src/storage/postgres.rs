@@ -472,14 +472,10 @@ impl PgStore {
         .bind(i64::try_from(min_block_height).map_err(Error::ConversionDatabaseInt)?)
         .fetch_optional(&self.0)
         .await
-        .map_err(Error::SqlxQuery)
-        .map(|height| {
-            height.map(|height| {
-                BitcoinBlockHeight::try_from(height).map_err(Error::ConversionDatabaseInt)
-            })
-        })
-        .map(|opt| opt.transpose())
-        .and_then(|inner| inner)
+        .map_err(Error::SqlxQuery)?  
+        .map(BitcoinBlockHeight::try_from)  
+        .transpose()  
+        .map_err(Error::ConversionDatabaseInt)
     }
 
     /// Return the height of the earliest block in which a donation UTXO
@@ -503,14 +499,10 @@ impl PgStore {
         )
         .fetch_optional(&self.0)
         .await
-        .map_err(Error::SqlxQuery)
-        .map(|height| {
-            height.map(|height| {
-                BitcoinBlockHeight::try_from(height).map_err(Error::ConversionDatabaseInt)
-            })
-        })
-        .map(|opt| opt.transpose())
-        .and_then(|inner| inner)
+        .map_err(Error::SqlxQuery)?  
+        .map(BitcoinBlockHeight::try_from)  
+        .transpose()  
+        .map_err(Error::ConversionDatabaseInt)
     }
 
     /// Return a donation UTXO with minimum height.
