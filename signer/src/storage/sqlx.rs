@@ -206,7 +206,7 @@ impl sqlx::postgres::PgHasArrayType for PublicKeyXOnly {
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for StacksBlockHeight {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         let height = <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(StacksBlockHeight::try_from(height)?)
+        StacksBlockHeight::try_from(height).map_err(BoxDynError::from)
     }
 }
 
@@ -234,7 +234,7 @@ impl sqlx::postgres::PgHasArrayType for StacksBlockHeight {
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for BitcoinBlockHeight {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         let height = <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
-        Ok(BitcoinBlockHeight::try_from(height)?)
+        BitcoinBlockHeight::try_from(height).map_err(BoxDynError::from)
     }
 }
 
