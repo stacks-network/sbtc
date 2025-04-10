@@ -261,7 +261,7 @@ mod tests {
             Ok(_) => panic!("Test failed: Expected an Error::InvalidApiResponse, but got Ok"),
             Err(e) => match e {
                 Error::InvalidApiResponse => {
-                    // assert!(true, "Received the expected Error::InvalidApiResponse");
+                    // All good!
                 }
                 _ => panic!("Test failed: Expected Error::InvalidApiResponse, got {e:?}"),
             },
