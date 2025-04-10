@@ -28,6 +28,8 @@ jobs:
     name: Run Lints
     runs-on: ubuntu-24.04
     steps:
+      - name: Install protobuf compiler
+        run: sudo apt install -y protobuf-compiler=3.21.12-8.2build1
       - uses: rui314/setup-mold@f80524ca6eeaa76759b57fb78ddce5d87a20c720 #v1
         with:
           make-default: true
@@ -45,8 +47,6 @@ jobs:
         with:
           components: clippy, rustfmt
           cache-key: "rust-tests"
-      - name: Install protobuf compiler
-        run: sudo apt install -y protobuf-compiler=3.21.12-8.2build1
       - name: Install Package Dependencies
         run: make install
       - name: Lint (Rustfmt)
@@ -70,6 +70,8 @@ jobs:
     name: Build Test Artifacts
     runs-on: ubuntu-24.04
     steps:
+      - name: Install protobuf compiler
+        run: sudo apt install -y protobuf-compiler=3.21.12-8.2build1
       - uses: rui314/setup-mold@f80524ca6eeaa76759b57fb78ddce5d87a20c720 #v1
         with:
           make-default: true
@@ -80,8 +82,6 @@ jobs:
       - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
-      - name: Install protobuf compiler
-        run: sudo apt install -y protobuf-compiler=3.21.12-8.2build1
       - name: Build Tests
         run: make test-build
       - name: Create Nextest Archives
@@ -111,8 +111,6 @@ jobs:
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Install protobuf compiler
-        run: sudo apt install -y protobuf-compiler=3.21.12-8.2build1
-      - name: Install Package Dependencies
         run: make install
       - name: Download Nextest Archives
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 #v4.1.8
