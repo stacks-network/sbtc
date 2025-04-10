@@ -77,7 +77,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
 
         self.unconfirmed = self._create_mock_deposit(
             txid="unconfirmed",
-            confirmed_height=-1,  # Not confirmed
+            confirmed_height=None,  # Not confirmed
             lock_time=20,
         )
 
@@ -249,7 +249,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
             txid="reclaimed", confirmed_height=880, lock_time=64
         )
         d_unconfirmed = self._create_mock_deposit(
-            txid="unconfirmed", confirmed_height=-1, lock_time=20
+            txid="unconfirmed", confirmed_height=None, lock_time=20
         )
 
         # Assign reclaim scripts needed for checks where UTXO is spent
@@ -636,9 +636,9 @@ class TestDepositProcessor(unittest.TestCase):
 
         enriched3 = next(r for r in result if r.bitcoin_txid == "tx3")  # This uses from_missing
         self.assertFalse(enriched3.in_mempool)
-        self.assertEqual(enriched3.confirmed_height, -1)
-        self.assertEqual(enriched3.confirmed_time, -1)
-        self.assertEqual(enriched3.fee, -1)
+        self.assertEqual(enriched3.confirmed_height, None)
+        self.assertEqual(enriched3.confirmed_time, None)
+        self.assertEqual(enriched3.fee, None)
 
         enriched4 = next(r for r in result if r.bitcoin_txid == "tx4")
         self.assertTrue(enriched4.in_mempool)
@@ -649,8 +649,8 @@ class TestDepositProcessor(unittest.TestCase):
         enriched5 = next(r for r in result if r.bitcoin_txid == "tx5")
         self.assertTrue(enriched5.in_mempool)
         self.assertEqual(enriched5.fee, 10000)
-        self.assertEqual(enriched5.confirmed_height, -1)
-        self.assertEqual(enriched5.confirmed_time, -1)
+        self.assertEqual(enriched5.confirmed_height, None)
+        self.assertEqual(enriched5.confirmed_time, None)
 
 
 class TestDepositProcessorIntegration(unittest.TestCase):

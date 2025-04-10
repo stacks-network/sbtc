@@ -185,9 +185,9 @@ class DepositProcessor:
 
             additional_info = {
                 "in_mempool": True,
-                "fee": tx_data.get("fee", 0),
-                "confirmed_height": tx_data.get("status", {}).get("block_height", -1),
-                "confirmed_time": tx_data.get("status", {}).get("block_time", -1),
+                "fee": tx_data.get("fee"),
+                "confirmed_height": tx_data.get("status", {}).get("block_height"),
+                "confirmed_time": tx_data.get("status", {}).get("block_time"),
             }
 
             transaction_details.append(

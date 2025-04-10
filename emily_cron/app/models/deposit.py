@@ -76,9 +76,9 @@ class EnrichedDepositInfo(DepositInfo):
     """Represents a deposit with additional enriched details."""
 
     in_mempool: bool  # Whether the transaction was found by the mempool API
-    fee: int
-    confirmed_height: int
-    confirmed_time: int
+    fee: Optional[int] = None
+    confirmed_height: Optional[int] = None
+    confirmed_time: Optional[int] = None
 
     @classmethod
     def from_deposit_info(cls, d: DepositInfo, additional_data: dict) -> Self:
@@ -87,12 +87,7 @@ class EnrichedDepositInfo(DepositInfo):
     @classmethod
     def from_missing(cls, d: DepositInfo) -> Self:
         """Create an EnrichedDepositInfo with missing values."""
-        missing_data = {
-            "in_mempool": False,
-            "fee": -1,
-            "confirmed_height": -1,
-            "confirmed_time": -1,
-        }
+        missing_data = {"in_mempool": False}
         return cls.from_deposit_info(d, missing_data)
 
     def is_expired(self, bitcoin_chaintip_height: int) -> bool:
@@ -108,7 +103,7 @@ class EnrichedDepositInfo(DepositInfo):
             bool: True if the deposit is expired, False otherwise
         """
         # Check if the deposit is confirmed
-        if self.confirmed_height < 0:
+        if self.confirmed_height is None:
             return False
 
         # Calculate the block height at which the deposit becomes eligible for expiry
