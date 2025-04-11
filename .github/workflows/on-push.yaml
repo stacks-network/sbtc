@@ -44,6 +44,8 @@ jobs:
     name: Run Lints
     runs-on: ubuntu-24.04
     steps:
+      - name: Install protobuf compiler
+        run: sudo apt install -y protobuf-compiler=3.21.12-8.2build1
       - uses: rui314/setup-mold@f80524ca6eeaa76759b57fb78ddce5d87a20c720 #v1
         with:
           make-default: true
@@ -84,6 +86,8 @@ jobs:
     name: Build Test Artifacts
     runs-on: ubuntu-24.04
     steps:
+      - name: Install protobuf compiler
+        run: sudo apt install -y protobuf-compiler=3.21.12-8.2build1
       - uses: rui314/setup-mold@f80524ca6eeaa76759b57fb78ddce5d87a20c720 #v1
         with:
           make-default: true
