@@ -263,7 +263,6 @@ mod tests {
     use std::marker::PhantomData;
 
     use fake::Fake as _;
-    use rand::SeedableRng as _;
     use rand::rngs::OsRng;
 
     use crate::codec::Encode as _;
@@ -272,6 +271,7 @@ mod tests {
     use crate::message;
     use crate::proto;
     use crate::storage::model::{BitcoinBlockHash, StacksBlockHash, StacksTxId};
+    use crate::testing::get_rng;
 
     use super::*;
     use fake::Faker;
@@ -612,7 +612,7 @@ mod tests {
 
     #[test]
     fn enforce_tag_ordering_signed_message() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(1234);
+        let mut rng = get_rng();
 
         let keypair = secp256k1::Keypair::new_global(&mut rng);
         let private_key: PrivateKey = keypair.secret_key().into();

@@ -1330,15 +1330,16 @@ pub struct WithdrawalRejectEvent {
 #[cfg(test)]
 mod tests {
     use fake::Fake;
-    use rand::SeedableRng;
 
     use sbtc::events::FromLittleEndianOrder;
+
+    use crate::testing::get_rng;
 
     use super::*;
 
     #[test]
     fn conversion_bitcoin_header_hashes() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+        let mut rng = get_rng();
 
         let block_hash: BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rng);
         let stacks_hash = BurnchainHeaderHash::from(block_hash);
