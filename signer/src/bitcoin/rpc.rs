@@ -197,7 +197,7 @@ pub struct BitcoinTxVin {
     /// This field is omitted if block undo data is not available, so it is
     /// missing whenever the `fee` field is missing in the
     /// [`BitcoinTxInfo`].
-    pub prevout: BitcoinTxVinPrevout,
+    pub prevout: Option<BitcoinTxVinPrevout>,
 }
 
 /// The previous output, omitted if block undo data is not available.

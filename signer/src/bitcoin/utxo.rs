@@ -1616,9 +1616,10 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
 impl TxDeconstructor for BitcoinTxInfo {
     fn prevout(&self, index: usize) -> Option<PrevoutRef> {
         let vin = self.vin.get(index)?;
+        let prevout = vin.prevout.as_ref()?;
         Some(PrevoutRef {
-            amount: vin.prevout.value,
-            script_pubkey: &vin.prevout.script_pub_key.script,
+            amount: prevout.value,
+            script_pubkey: &prevout.script_pub_key.script,
             txid: vin.details.txid.as_ref()?,
             output_index: vin.details.vout?,
         })
