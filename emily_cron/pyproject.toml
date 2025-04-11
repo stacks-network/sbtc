@@ -1,0 +1,9 @@
+[project]
+name = "emily-cron"
+version = "0.1.0"
+description = "Cron job for updating deposit statuses in Emily"
+requires-python = ">=3.13"
+dependencies = [
+    "bitcoinlib==0.7.2",
+    "requests==2.32.3",
+]

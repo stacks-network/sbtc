@@ -25,9 +25,7 @@ def read_fixture(filename):
 
 BASE_PATH = os.path.join(os.path.dirname(__file__), "..", "..")
 NEW_BLOCK_FIXTURES_PATH = os.path.join(BASE_PATH, "signer", "tests", "fixtures")
-DEPOSIT_TESTNET_FIXTURES_PATH = os.path.join(
-    BASE_PATH, "emily", "handler", "tests", "fixtures"
-)
+DEPOSIT_TESTNET_FIXTURES_PATH = os.path.join(BASE_PATH, "emily", "handler", "tests", "fixtures")
 
 
 TESTNET_DEPOSIT_FIXTURES_FILES = {
@@ -61,9 +59,7 @@ def create_deposit(deposit: dict) -> requests.Response:
 
 
 def get_deposit(bitcoin_txid: str, bitcoin_tx_output_index: int) -> requests.Response:
-    return requests.get(
-        f"{DEPOSITS_URL}/{bitcoin_txid}/{bitcoin_tx_output_index}", headers=headers
-    )
+    return requests.get(f"{DEPOSITS_URL}/{bitcoin_txid}/{bitcoin_tx_output_index}", headers=headers)
 
 
 def get_withdrawal(request_id: int) -> requests.Response:
@@ -106,9 +102,7 @@ class IntegrationTests(unittest.TestCase):
         create_deposit_fixture = TESTNET_DEPOSIT_FIXTURES["create_deposit"]
         response = create_deposit(create_deposit_fixture)
         self.assertEqual(response.status_code, 201)
-        response = self.app.post(
-            "/new_block", json=TESTNET_DEPOSIT_FIXTURES["complete_deposit"]
-        )
+        response = self.app.post("/new_block", json=TESTNET_DEPOSIT_FIXTURES["complete_deposit"])
         self.assertEqual(response.status_code, 200)
         deposit = get_deposit(
             create_deposit_fixture["bitcoinTxid"],
@@ -142,14 +136,10 @@ class IntegrationTests(unittest.TestCase):
         )
 
     def test_withdrawal_accept(self):
-        response = self.app.post(
-            "/new_block", json=NEW_BLOCK_FIXTURES["withdrawal_create"]
-        )
+        response = self.app.post("/new_block", json=NEW_BLOCK_FIXTURES["withdrawal_create"])
         self.assertEqual(response.status_code, 200)
 
-        response = self.app.post(
-            "/new_block", json=NEW_BLOCK_FIXTURES["withdrawal_accept"]
-        )
+        response = self.app.post("/new_block", json=NEW_BLOCK_FIXTURES["withdrawal_accept"])
         self.assertEqual(response.status_code, 200)
 
         withdrawal = get_withdrawal(1)
@@ -180,14 +170,10 @@ class IntegrationTests(unittest.TestCase):
         )
 
     def test_withdrawal_reject(self):
-        response = self.app.post(
-            "/new_block", json=NEW_BLOCK_FIXTURES["withdrawal_create"]
-        )
+        response = self.app.post("/new_block", json=NEW_BLOCK_FIXTURES["withdrawal_create"])
         self.assertEqual(response.status_code, 200)
 
-        response = self.app.post(
-            "/new_block", json=NEW_BLOCK_FIXTURES["withdrawal_reject"]
-        )
+        response = self.app.post("/new_block", json=NEW_BLOCK_FIXTURES["withdrawal_reject"])
         self.assertEqual(response.status_code, 200)
 
         withdrawal = get_withdrawal(1)
