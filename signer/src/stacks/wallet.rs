@@ -440,7 +440,6 @@ mod tests {
     use blockstack_lib::chainstate::stacks::TransactionPayload;
     use blockstack_lib::clarity::vm::Value as ClarityValue;
     use fake::Fake;
-    use rand::SeedableRng as _;
     use rand::rngs::OsRng;
     use rand::seq::SliceRandom;
     use secp256k1::Keypair;
@@ -460,6 +459,7 @@ mod tests {
     use crate::testing::context::ConfigureMockedClients;
     use crate::testing::context::TestContext;
     use crate::testing::context::*;
+    use crate::testing::get_rng;
     use crate::testing::storage::model::TestData;
 
     use super::*;
@@ -666,7 +666,7 @@ mod tests {
     ///    "stacks-node" (in this test it just returns a nonce of zero).
     #[tokio::test]
     async fn loading_signer_wallet_from_context() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+        let mut rng = get_rng();
 
         let ctx = TestContext::builder()
             .with_in_memory_storage()
