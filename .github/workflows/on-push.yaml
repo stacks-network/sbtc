@@ -1,14 +1,30 @@
-name: On Push
+name: Push & PR
 on:
+  # We explicitly filter on `main` to avoid triggering on pushes to PR branches,
+  # which would otherwise be triggered by the `pull_request.synchronize` event
+  # and cause multiple runs of the same workflow for the same push.
+  # When the merge queue merges to main, it will trigger this workflow.
   push:
+    branches:
+      - main
+  # This trigger will trigger on pushes to PR branches via the `synchronize`
+  # event type.
   pull_request:
     types: [opened, synchronize, reopened]
+  # This is required for the merge queue to work properly with the CI-required
+  # check. `checks_requested` is currently the only event type supported, but
+  # we're being explicit to avoid the potential addition of types like
+  # `checks_completed`, `queue_position`, etc. in the future from causing
+  # multiple CI runs for the same merge queue entry.
+  merge_group:
+    types: [checks_requested]
 
 permissions: read-all
 
 concurrency:
-  # limit concurrency of entire workflow runs for a specific branch
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Ensure that this workflow only runs once at a time for each PR or push,
+  # cancelling any in-progress runs for the same HEAD (PR) or branch (Push).
+  group: push-pr-${{ github.head_ref || github.ref_name || github.run_id}}
   cancel-in-progress: true
 
 env:
