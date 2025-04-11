@@ -1424,7 +1424,7 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
 
 #[test_log::test(tokio::test)]
 async fn block_observer_ignores_coinbase() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let emily_client = EmilyClient::try_new(
@@ -1551,7 +1551,7 @@ async fn block_observer_ignores_coinbase() {
     //
     // Create a deposit from coinbase.
 
-    // First, we also send a donation (that will endup in the same block as the
+    // First, we also send a donation (that will end up in the same block as the
     // deposit) to ensure we process the block just fine.
     let donation_amount_2 = 123_456 + 1;
     let donation_outpoint_2 = faucet.send_to(donation_amount_2, &address);
@@ -1578,11 +1578,9 @@ async fn block_observer_ignores_coinbase() {
         reclaim_script: deposit_request.reclaim_script.to_hex_string(),
         transaction_hex: serialize_hex(&deposit_tx),
     };
-    dbg!(
-        deposit_api::create_deposit(emily_client.config(), body)
-            .await
-            .unwrap()
-    );
+    deposit_api::create_deposit(emily_client.config(), body)
+        .await
+        .unwrap();
 
     // ** Step 6 **
     //
