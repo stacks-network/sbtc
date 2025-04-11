@@ -145,7 +145,6 @@ mod tests {
     use fake::Fake as _;
     use fake::Faker;
     use prost::bytes::Buf as _;
-    use rand::SeedableRng as _;
     use rand::rngs::OsRng;
     use test_case::test_case;
 
@@ -197,6 +196,7 @@ mod tests {
     use crate::storage::model::StacksPrincipal;
     use crate::storage::model::StacksTxId;
     use crate::testing::dummy::Unit;
+    use crate::testing::get_rng;
 
     use super::*;
 
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn public_key_should_be_able_to_encode_and_decode_correctly() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut rng = get_rng();
         let message = PublicKey::dummy_with_rng(&fake::Faker, &mut rng);
 
         let encoded = message.encode_to_vec();

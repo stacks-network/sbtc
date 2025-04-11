@@ -8,7 +8,6 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::types::chainstate::StacksAddress;
 use fake::Fake as _;
 use fake::Faker;
-use rand::SeedableRng as _;
 use sbtc::testing::regtest;
 use secp256k1::Keypair;
 use secp256k1::ecdsa::RecoverableSignature;
@@ -25,6 +24,7 @@ use signer::stacks::wallet::SignerWallet;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::StacksTxId;
+use signer::testing::get_rng;
 use signer::testing::wallet::ContractCallWrapper;
 use signer::util::ApiFallbackClient;
 use tokio::sync::OnceCell;
@@ -286,7 +286,7 @@ async fn is_deposit_completed_works() {
         let auth = bitcoincore_rpc::Auth::UserPass(username, password);
         bitcoincore_rpc::Client::new("http://localhost:18443", auth).unwrap()
     };
-    let mut rng = rand::rngs::StdRng::seed_from_u64(123);
+    let mut rng = get_rng();
 
     let signers = deploy_smart_contracts().await;
     let outpoint = bitcoin::OutPoint {
