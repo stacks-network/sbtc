@@ -87,7 +87,7 @@ pub trait AssertConstantInvariants {
 
 impl AssertConstantInvariants for Vec<BitcoinTxValidationData> {
     fn packages(&self) -> &[BitcoinTxValidationData] {
-        &self
+        self
     }
 }
 
@@ -112,7 +112,7 @@ async fn one_tx_per_request_set() {
         is_deposit: true,
     }];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
@@ -217,7 +217,7 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
@@ -369,7 +369,7 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
@@ -469,7 +469,7 @@ async fn swept_withdrawals_fail_validation() {
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
@@ -585,7 +585,7 @@ async fn cannot_sign_deposit_is_ok() {
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     // Let's suppose that signer 0 cannot sign for the deposit, but that
     // they still accept the deposit. That means the bitmap at signer 0
@@ -749,7 +749,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         },
     ];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
@@ -893,7 +893,7 @@ async fn outcome_is_independent_of_input_order() {
         },
     ];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 

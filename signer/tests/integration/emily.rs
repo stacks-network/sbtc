@@ -747,7 +747,7 @@ async fn test_get_deposits_returns_pending_and_accepted() {
 
     deposit_api::update_deposits(
         emily_client.config(),
-        UpdateDepositsRequestBody { deposits: deposits },
+        UpdateDepositsRequestBody { deposits },
     )
     .await
     .expect("cannot update deposits");

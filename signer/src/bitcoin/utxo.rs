@@ -1661,7 +1661,7 @@ mod tests {
     /// The maximum virtual size of a transaction package in v-bytes.
     const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
 
-    const X_ONLY_PUBLIC_KEY1: &'static str =
+    const X_ONLY_PUBLIC_KEY1: &str =
         "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
 
     static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(0);
@@ -2180,7 +2180,7 @@ mod tests {
                 "data should contain at least the header bytes"
             );
 
-            assert_eq!(&data[0..2], &[b'S', b'T'], "magic bytes should be 'ST'");
+            assert_eq!(&data[0..2], b"ST", "magic bytes should be 'ST'");
             assert_eq!(
                 data[2], OP_RETURN_VERSION,
                 "version should match OP_RETURN_VERSION"
@@ -2344,13 +2344,13 @@ mod tests {
             deposits: vec![
                 create_deposit(1234, 0, 1 << 1),
                 create_deposit(5678, 0, 1 << 2),
-                create_deposit(9012, 0, 1 << 3 | 1 << 4),
+                create_deposit(9012, 0, (1 << 3) | (1 << 4)),
             ],
             withdrawals: vec![
                 create_withdrawal(1000, 0, 1 << 5),
                 create_withdrawal(2000, 0, 1 << 6),
                 create_withdrawal(3000, 0, 1 << 7),
-                create_withdrawal(4000, 0, 1 << 8 | 1 << 9),
+                create_withdrawal(4000, 0, (1 << 8) | (1 << 9)),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2399,7 +2399,7 @@ mod tests {
             deposits: vec![
                 create_deposit(1234, 0, 1 << 1),
                 create_deposit(5678, 0, 1 << 2),
-                create_deposit(9012, 0, 1 << 3 | 1 << 4),
+                create_deposit(9012, 0, (1 << 3) | (1 << 4)),
                 create_deposit(3456, 0, 1 << 5),
                 create_deposit(7890, 0, 0),
             ],
@@ -2407,7 +2407,7 @@ mod tests {
                 create_withdrawal(1000, 0, 1 << 6),
                 create_withdrawal(2000, 0, 1 << 7),
                 create_withdrawal(3000, 0, 1 << 8),
-                create_withdrawal(4000, 0, 1 << 9 | 1 << 10),
+                create_withdrawal(4000, 0, (1 << 9) | (1 << 10)),
                 create_withdrawal(5000, 0, 0),
                 create_withdrawal(6000, 0, 0),
                 create_withdrawal(7000, 0, 0),
@@ -2499,7 +2499,7 @@ mod tests {
             deposits: vec![
                 create_deposit(12340, 100_000, 1 << 1),
                 create_deposit(56780, 100_000, 1 << 2),
-                create_deposit(90120, 100_000, 1 << 3 | 1 << 4),
+                create_deposit(90120, 100_000, (1 << 3) | (1 << 4)),
                 create_deposit(34560, 100_000, 1 << 5),
                 create_deposit(78900, 100_000, 0),
             ],
@@ -2507,7 +2507,7 @@ mod tests {
                 create_withdrawal(10000, 100_000, 1 << 6),
                 create_withdrawal(20000, 100_000, 1 << 7),
                 create_withdrawal(30000, 100_000, 1 << 8),
-                create_withdrawal(40000, 100_000, 1 << 9 | 1 << 10),
+                create_withdrawal(40000, 100_000, (1 << 9) | (1 << 10)),
                 create_withdrawal(50000, 100_000, 0),
                 create_withdrawal(60000, 100_000, 0),
                 create_withdrawal(70000, 100_000, 0),
@@ -3106,7 +3106,7 @@ mod tests {
             .map(|shift| create_deposit(10_000, 10_000, 1 << shift))
             .collect();
         let withdrawals: Vec<WithdrawalRequest> = (0..30)
-            .map(|shift| create_withdrawal(10_000, 10_000, 1 << shift + 30))
+            .map(|shift| create_withdrawal(10_000, 10_000, 1 << (shift + 30)))
             .collect();
 
         let requests = SbtcRequests {

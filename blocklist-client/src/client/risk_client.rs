@@ -259,12 +259,10 @@ mod tests {
         let result = get_risk_assessment(&client, &config, TEST_ADDRESS).await;
         match result {
             Ok(_) => panic!("Test failed: Expected an Error::InvalidApiResponse, but got Ok"),
-            Err(e) => match e {
-                Error::InvalidApiResponse => {
-                    assert!(true, "Received the expected Error::InvalidApiResponse");
-                }
-                _ => panic!("Test failed: Expected Error::InvalidApiResponse, got {e:?}"),
-            },
+            Err(e) => assert!(
+                matches!(e, Error::InvalidApiResponse),
+                "Test failed: Expected Error::InvalidApiResponse, got {e:?}"
+            ),
         }
 
         mock.assert();

@@ -16,12 +16,14 @@ pub type StandardError = TestError<ErrorResponse>;
 
 /// Setup test.
 pub async fn clean_setup() -> Configuration {
-    let mut configuration = Configuration::default();
-    configuration.base_path = format!("http://{}:{}", SETTINGS.server.host, SETTINGS.server.port);
-    configuration.api_key = Some(ApiKey {
-        prefix: None,
-        key: SETTINGS.server.api_key.clone(),
-    });
+    let configuration = testing_emily_client::apis::configuration::Configuration {
+        base_path: format!("http://{}:{}", SETTINGS.server.host, SETTINGS.server.port),
+        api_key: Some(ApiKey {
+            prefix: None,
+            key: SETTINGS.server.api_key.clone(),
+        }),
+        ..Default::default()
+    };
     apis::testing_api::wipe_databases(&configuration)
         .await
         .expect("Failed to wipe databases during test clean setup.");
@@ -45,7 +47,7 @@ pub async fn batch_set_chainstates(
     let mut created: Vec<Chainstate> = Vec::with_capacity(create_requests.len());
     for request in create_requests {
         created.push(
-            apis::chainstate_api::set_chainstate(&configuration, request)
+            apis::chainstate_api::set_chainstate(configuration, request)
                 .await
                 .expect("Received an error after making a valid create deposit request api call."),
         );
