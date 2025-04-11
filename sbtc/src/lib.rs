@@ -25,7 +25,7 @@ pub mod testing;
 ///
 /// This particular X-coordinate was discussed in the original taproot BIP
 /// on spending rules BIP-0341[1]. Specifically, the X-coordinate is formed
-/// by taking the hash of the standard uncompressed encoding of the 
+/// by taking the hash of the standard uncompressed encoding of the
 /// secp256k1 base point G as the X-coordinate. In that BIP the authors
 /// wrote the X-coordinate that is reproduced below.
 ///

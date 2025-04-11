@@ -177,6 +177,10 @@ pub enum Error {
     #[error("transaction is missing, txid: {0}, block hash {1:?}")]
     BitcoinTxMissing(bitcoin::Txid, Option<bitcoin::BlockHash>),
 
+    /// The bitcoin transaction is a coinbase (that we don't support)
+    #[error("transaction is coinbase, txid: {0}")]
+    BitcoinTxCoinbase(bitcoin::Txid),
+
     /// This is the error that is returned when validating a bitcoin
     /// transaction.
     #[error("bitcoin validation error: {0}")]
@@ -723,7 +727,7 @@ pub enum Error {
 
     /// Error when withdrawal requests would exceed sBTC's rolling withdrawal caps
     #[error("total withdrawal amounts ({amounts}) exceeds rolling caps ({cap} over
-            {cap_blocks}) with the currently withdrawn total {withdrawn_total})", 
+            {cap_blocks}) with the currently withdrawn total {withdrawn_total})",
             amounts = .0.amounts, cap = .0.cap, cap_blocks = .0.cap_blocks, withdrawn_total = .0.withdrawn_total)]
     ExceedsWithdrawalCap(WithdrawalCapContext),
 

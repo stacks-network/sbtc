@@ -6352,7 +6352,7 @@ mod get_pending_accepted_withdrawal_requests {
     ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed (✔) in S1
     ///            ┊  └──────► ┊ B2b  │    ┊  and rejected (✖) in S2b, but its
     ///            ┊         └─┊────▲─┘    ┊  anchor later gets orphaned by B3a.
-    ///            ┊           ┊    ┊      ┊  
+    ///            ┊           ┊    ┊      ┊
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
     /// Stacks:  │   S1 ✔ ├──►  S2a   ├──►  S3a   │
     ///          └────┬───┘  └────────┘  └────────┘
@@ -7024,12 +7024,12 @@ mod get_pending_accepted_withdrawal_requests {
     ///
     /// ```text
     /// Height:       0           1           2          3
-    ///          ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  
+    ///          ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐
     /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   ├──►   B4   │  We create a withdrawal
     ///          └─▲──────┘  └─▲──────┘  └─▲──────┘  └─▲──────┘  request which is confirmed
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  in S2, but we set its
-    /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3 ⚠️ ├──►   S4   │  bitcoin height to 3.  
-    ///          └────────┘  └────────┘  └────────┘  └────────┘  
+    /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3 ⚠️ ├──►   S4   │  bitcoin height to 3.
+    ///          └────────┘  └────────┘  └────────┘  └────────┘
     /// ```
     #[tokio::test]
     async fn test_confirmed_anchor_block_lower_than_block_height() {
@@ -7143,7 +7143,7 @@ mod get_pending_accepted_withdrawal_requests {
     ///
     /// ```text
     ///
-    /// Height:       0           1           2     
+    /// Height:       0           1           2
     ///          ┌────────┐  ┌────────┐  ┌────────┐
     /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │  We create a withdrawal
     ///          └─▲──────┘  └─▲──────┘  └─▲──────┘  request which is confirmed
