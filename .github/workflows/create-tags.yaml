@@ -33,7 +33,7 @@ jobs:
           script: |
             const semverRegex = /^v?\d+\.\d+\.\d+(-[\w.-]+)?(\+[\w.-]+)?$/;
             if (tag !== `${{ inputs.tag_name }}`) {
-              core.setFailed("Error: Invalid tag format: "${tag}". Expected SemVer like X.Y.Z, vX.Y.Z-note, or X.Y.Z+note");
+              core.setFailed(`Error: Invalid tag format: "${tag}". Expected SemVer like X.Y.Z, vX.Y.Z-note, or X.Y.Z+note`);
             } else {
               github.rest.git.createRef({
                 owner: context.repo.owner,
