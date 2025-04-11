@@ -214,7 +214,7 @@ impl From<Deposit> for DepositRequest {
         // It's most likely the case that each of the inputs "came" from
         // the same Address, so we filter out duplicates.
         let sender_script_pub_keys: BTreeSet<ScriptPubKey> = tx_input_iter
-            .map(|tx_in| tx_in.prevout.script_pub_key.script.into())
+            .filter_map(|x| Some(x.prevout?.script_pub_key.script.into()))
             .collect();
 
         Self {
