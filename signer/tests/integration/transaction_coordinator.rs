@@ -33,8 +33,6 @@ use fake::Fake as _;
 use fake::Faker;
 use futures::StreamExt as _;
 use lru::LruCache;
-use mockito;
-use rand::SeedableRng as _;
 use rand::rngs::OsRng;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo as _;
