@@ -1651,9 +1651,12 @@ fn make_coinbase_deposit_request(
     let block_hash = rpc.generate_to_address(1, &address).unwrap()[0];
     let transactions = rpc.get_block(&block_hash).unwrap();
 
-    let deposit_tx = transactions.txdata[0].clone();
-    // Sanity check
-    assert!(deposit_tx.input[0].previous_output.is_null());
+    let deposit_tx = transactions
+        .txdata
+        .iter()
+        .find(|tx| tx.is_coinbase())
+        .expect("missing coinbase")
+        .clone();
 
     let req = signer::bitcoin::utxo::DepositRequest {
         outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
