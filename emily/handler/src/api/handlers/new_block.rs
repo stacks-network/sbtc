@@ -12,8 +12,8 @@ use sbtc::events::{
 };
 
 use crate::api::handlers::chainstate::set_chainstate;
-use crate::api::handlers::deposit::update_deposits;
-use crate::api::handlers::withdrawal::{create_withdrawal, update_withdrawals};
+use crate::api::handlers::deposit::update_deposits_sidecar;
+use crate::api::handlers::withdrawal::{create_withdrawal, update_withdrawals_sidecar};
 use crate::api::models::chainstate::Chainstate;
 use crate::api::models::common::Fulfillment;
 use crate::api::models::common::Status;
@@ -110,7 +110,6 @@ pub async fn new_block(
         handle_internal_call(
             set_chainstate(
                 context.clone(),
-                context.settings.trusted_reorg_api_key.clone(),
                 Chainstate {
                     stacks_block_height: stacks_chaintip.block_height,
                     stacks_block_hash: stacks_chaintip.block_hash.clone(),
@@ -187,9 +186,8 @@ pub async fn new_block(
 
         if !completed_deposits.is_empty() {
             handle_internal_call(
-                update_deposits(
+                update_deposits_sidecar(
                     context.clone(),
-                    context.settings.trusted_reorg_api_key.clone(),
                     UpdateDepositsRequestBody { deposits: completed_deposits },
                 ),
                 "failed to update deposits in Emily",
@@ -210,9 +208,8 @@ pub async fn new_block(
 
         if !updated_withdrawals.is_empty() {
             handle_internal_call(
-                update_withdrawals(
+                update_withdrawals_sidecar(
                     context.clone(),
-                    context.settings.trusted_reorg_api_key.clone(),
                     UpdateWithdrawalsRequestBody {
                         withdrawals: updated_withdrawals,
                     },

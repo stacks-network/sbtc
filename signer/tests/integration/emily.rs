@@ -745,7 +745,7 @@ async fn test_get_deposits_returns_pending_and_accepted() {
         })
         .collect();
 
-    deposit_api::update_deposits(
+    deposit_api::update_deposits_signer(
         emily_client.config(),
         UpdateDepositsRequestBody { deposits: deposits },
     )

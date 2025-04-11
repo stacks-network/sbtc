@@ -57,7 +57,6 @@ services:
       - emily-dynamodb
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
-      - TRUSTED_REORG_API_KEY=
       - DEPLOYER_ADDRESS=
 
   # Runs the Emily server.

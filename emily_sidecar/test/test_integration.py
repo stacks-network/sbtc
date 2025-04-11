@@ -12,8 +12,8 @@ from app.main import app, headers
 logging_config.silence_logging()
 
 WIPE_URL = f"{settings.EMILY_ENDPOINT}/testing/wipe"
-DEPOSITS_URL = f"{settings.EMILY_ENDPOINT}/deposit"
-WITHDRAWALS_URL = f"{settings.EMILY_ENDPOINT}/withdrawal"
+DEPOSITS_URL = f"{settings.EMILY_ENDPOINT}/deposit_private"
+WITHDRAWALS_URL = f"{settings.EMILY_ENDPOINT}/withdrawal_private"
 
 client = TestClient(app)
 

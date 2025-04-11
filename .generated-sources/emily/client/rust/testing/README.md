@@ -29,6 +29,7 @@ Class | Method | HTTP request | Description
 *CorsApi* | [**chainstate_height_options**](docs/CorsApi.md#chainstate_height_options) | **OPTIONS** /chainstate/{height} | CORS support
 *CorsApi* | [**chainstate_options**](docs/CorsApi.md#chainstate_options) | **OPTIONS** /chainstate | CORS support
 *CorsApi* | [**deposit_options**](docs/CorsApi.md#deposit_options) | **OPTIONS** /deposit | CORS support
+*CorsApi* | [**deposit_private_options**](docs/CorsApi.md#deposit_private_options) | **OPTIONS** /deposit_private | CORS support
 *CorsApi* | [**deposit_recipient_recipient_options**](docs/CorsApi.md#deposit_recipient_recipient_options) | **OPTIONS** /deposit/recipient/{recipient} | CORS support
 *CorsApi* | [**deposit_reclaim_pubkeys_reclaim_pubkeys_options**](docs/CorsApi.md#deposit_reclaim_pubkeys_reclaim_pubkeys_options) | **OPTIONS** /deposit/reclaim-pubkeys/{reclaimPubkeys} | CORS support
 *CorsApi* | [**deposit_txid_index_options**](docs/CorsApi.md#deposit_txid_index_options) | **OPTIONS** /deposit/{txid}/{index} | CORS support
@@ -40,6 +41,7 @@ Class | Method | HTTP request | Description
 *CorsApi* | [**testing_wipe_options**](docs/CorsApi.md#testing_wipe_options) | **OPTIONS** /testing/wipe | CORS support
 *CorsApi* | [**withdrawal_id_options**](docs/CorsApi.md#withdrawal_id_options) | **OPTIONS** /withdrawal/{id} | CORS support
 *CorsApi* | [**withdrawal_options**](docs/CorsApi.md#withdrawal_options) | **OPTIONS** /withdrawal | CORS support
+*CorsApi* | [**withdrawal_private_options**](docs/CorsApi.md#withdrawal_private_options) | **OPTIONS** /withdrawal_private | CORS support
 *CorsApi* | [**withdrawal_recipient_recipient_options**](docs/CorsApi.md#withdrawal_recipient_recipient_options) | **OPTIONS** /withdrawal/recipient/{recipient} | CORS support
 *CorsApi* | [**withdrawal_sender_sender_options**](docs/CorsApi.md#withdrawal_sender_sender_options) | **OPTIONS** /withdrawal/sender/{sender} | CORS support
 *ChainstateApi* | [**get_chain_tip**](docs/ChainstateApi.md#get_chain_tip) | **GET** /chainstate | Get chain tip handler.
@@ -52,7 +54,8 @@ Class | Method | HTTP request | Description
 *DepositApi* | [**get_deposits_for_recipient**](docs/DepositApi.md#get_deposits_for_recipient) | **GET** /deposit/recipient/{recipient} | Get deposits by recipient handler.
 *DepositApi* | [**get_deposits_for_reclaim_pubkeys**](docs/DepositApi.md#get_deposits_for_reclaim_pubkeys) | **GET** /deposit/reclaim-pubkeys/{reclaimPubkeys} | Get deposits by recipient handler.
 *DepositApi* | [**get_deposits_for_transaction**](docs/DepositApi.md#get_deposits_for_transaction) | **GET** /deposit/{txid} | Get deposits for transaction handler.
-*DepositApi* | [**update_deposits**](docs/DepositApi.md#update_deposits) | **PUT** /deposit | Update deposits handler.
+*DepositApi* | [**update_deposits_sidecar**](docs/DepositApi.md#update_deposits_sidecar) | **PUT** /deposit_private | Update deposits handler.
+*DepositApi* | [**update_deposits_signer**](docs/DepositApi.md#update_deposits_signer) | **PUT** /deposit | Update deposits handler.
 *HealthApi* | [**check_health**](docs/HealthApi.md#check_health) | **GET** /health | Get health handler.
 *LimitsApi* | [**get_limits**](docs/LimitsApi.md#get_limits) | **GET** /limits | Get the global limits.
 *LimitsApi* | [**get_limits_for_account**](docs/LimitsApi.md#get_limits_for_account) | **GET** /limits/{account} | Get limits for account handler.
@@ -65,7 +68,8 @@ Class | Method | HTTP request | Description
 *WithdrawalApi* | [**get_withdrawals**](docs/WithdrawalApi.md#get_withdrawals) | **GET** /withdrawal | Get withdrawals handler.
 *WithdrawalApi* | [**get_withdrawals_for_recipient**](docs/WithdrawalApi.md#get_withdrawals_for_recipient) | **GET** /withdrawal/recipient/{recipient} | Get withdrawals by recipient handler.
 *WithdrawalApi* | [**get_withdrawals_for_sender**](docs/WithdrawalApi.md#get_withdrawals_for_sender) | **GET** /withdrawal/sender/{sender} | Get withdrawals by sender handler.
-*WithdrawalApi* | [**update_withdrawals**](docs/WithdrawalApi.md#update_withdrawals) | **PUT** /withdrawal | Update withdrawals handler.
+*WithdrawalApi* | [**update_withdrawals_sidecar**](docs/WithdrawalApi.md#update_withdrawals_sidecar) | **PUT** /withdrawal_private | Update withdrawals handler.
+*WithdrawalApi* | [**update_withdrawals_signer**](docs/WithdrawalApi.md#update_withdrawals_signer) | **PUT** /withdrawal | Update withdrawals handler.
 
 
 ## Documentation For Models

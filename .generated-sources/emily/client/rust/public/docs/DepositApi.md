@@ -10,7 +10,7 @@ Method | HTTP request | Description
 [**get_deposits_for_recipient**](DepositApi.md#get_deposits_for_recipient) | **GET** /deposit/recipient/{recipient} | Get deposits by recipient handler.
 [**get_deposits_for_reclaim_pubkeys**](DepositApi.md#get_deposits_for_reclaim_pubkeys) | **GET** /deposit/reclaim-pubkeys/{reclaimPubkeys} | Get deposits by recipient handler.
 [**get_deposits_for_transaction**](DepositApi.md#get_deposits_for_transaction) | **GET** /deposit/{txid} | Get deposits for transaction handler.
-[**update_deposits**](DepositApi.md#update_deposits) | **PUT** /deposit | Update deposits handler.
+[**update_deposits_signer**](DepositApi.md#update_deposits_signer) | **PUT** /deposit | Update deposits handler.
 
 
 
@@ -191,9 +191,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 
-## update_deposits
+## update_deposits_signer
 
-> models::UpdateDepositsResponse update_deposits(update_deposits_request_body)
+> models::UpdateDepositsResponse update_deposits_signer(update_deposits_request_body)
 Update deposits handler.
 
 ### Parameters

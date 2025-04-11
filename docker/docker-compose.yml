@@ -102,7 +102,6 @@ services:
       - emily-dynamodb
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
-      - TRUSTED_REORG_API_KEY=testApiKey
       - DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
     profiles:
       - default

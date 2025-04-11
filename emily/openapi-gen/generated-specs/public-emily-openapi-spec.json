@@ -383,7 +383,7 @@
           "deposit"
         ],
         "summary": "Update deposits handler.",
-        "operationId": "updateDeposits",
+        "operationId": "updateDepositsSigner",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1348,7 +1348,7 @@
           "withdrawal"
         ],
         "summary": "Update withdrawals handler.",
-        "operationId": "updateWithdrawals",
+        "operationId": "updateWithdrawalsSigner",
         "requestBody": {
           "content": {
             "application/json": {

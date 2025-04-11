@@ -14,7 +14,8 @@ pub fn routes(
         .or(get_withdrawals_for_recipient(context.clone()))
         .or(get_withdrawals_for_sender(context.clone()))
         .or(create_withdrawal(context.clone()))
-        .or(update_withdrawals(context))
+        .or(update_withdrawals_sidecar(context.clone()))
+        .or(update_withdrawals_signer(context))
 }
 
 /// Get withdrawal endpoint.
@@ -76,17 +77,28 @@ fn create_withdrawal(
         .then(handlers::withdrawal::create_withdrawal)
 }
 
-/// Update withdrawals endpoint.
-fn update_withdrawals(
+/// Update withdrawals from signer endpoint.
+fn update_withdrawals_signer(
     context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .map(move || context.clone())
         .and(warp::path("withdrawal"))
         .and(warp::put())
-        .and(warp::header::<String>("x-api-key"))
         .and(warp::body::json())
-        .then(handlers::withdrawal::update_withdrawals)
+        .then(handlers::withdrawal::update_withdrawals_signer)
+}
+
+/// Update withdrawals from sidecar endpoint.
+fn update_withdrawals_sidecar(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .map(move || context.clone())
+        .and(warp::path("withdrawal_private"))
+        .and(warp::put())
+        .and(warp::body::json())
+        .then(handlers::withdrawal::update_withdrawals_sidecar)
 }
 
 // TODO(387): Add route unit tests.

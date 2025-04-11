@@ -15,7 +15,8 @@ pub fn routes(
         .or(get_deposits_for_recipient(context.clone()))
         .or(get_deposits_for_reclaim_pubkeys(context.clone()))
         .or(create_deposit(context.clone()))
-        .or(update_deposits(context))
+        .or(update_deposits_sidecar(context.clone()))
+        .or(update_deposits_signer(context))
 }
 
 /// Get deposit endpoint.
@@ -89,17 +90,28 @@ fn create_deposit(
         .then(handlers::deposit::create_deposit)
 }
 
-/// Update deposits endpoint.
-fn update_deposits(
+/// Update deposits from signer endpoint.
+fn update_deposits_signer(
     context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .map(move || context.clone())
         .and(warp::path!("deposit"))
         .and(warp::put())
-        .and(warp::header::<String>("x-api-key"))
         .and(warp::body::json())
-        .then(handlers::deposit::update_deposits)
+        .then(handlers::deposit::update_deposits_signer)
+}
+
+/// Update deposits from sidecar endpoint.
+fn update_deposits_sidecar(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .map(move || context.clone())
+        .and(warp::path!("deposit_private"))
+        .and(warp::put())
+        .and(warp::body::json())
+        .then(handlers::deposit::update_deposits_sidecar)
 }
 
 // TODO(387): Add route unit tests.

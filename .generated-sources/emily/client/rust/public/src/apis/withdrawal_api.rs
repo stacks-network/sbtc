@@ -57,10 +57,10 @@ pub enum GetWithdrawalsForSenderError {
     UnknownValue(serde_json::Value),
 }
 
-/// struct for typed errors of method [`update_withdrawals`]
+/// struct for typed errors of method [`update_withdrawals_signer`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum UpdateWithdrawalsError {
+pub enum UpdateWithdrawalsSignerError {
     Status400(models::ErrorResponse),
     Status403(models::ErrorResponse),
     Status404(models::ErrorResponse),
@@ -260,10 +260,10 @@ pub async fn get_withdrawals_for_sender(
     }
 }
 
-pub async fn update_withdrawals(
+pub async fn update_withdrawals_signer(
     configuration: &configuration::Configuration,
     update_withdrawals_request_body: models::UpdateWithdrawalsRequestBody,
-) -> Result<models::UpdateWithdrawalsResponse, Error<UpdateWithdrawalsError>> {
+) -> Result<models::UpdateWithdrawalsResponse, Error<UpdateWithdrawalsSignerError>> {
     let local_var_configuration = configuration;
 
     let local_var_client = &local_var_configuration.client;
@@ -295,7 +295,7 @@ pub async fn update_withdrawals(
     if !local_var_status.is_client_error() && !local_var_status.is_server_error() {
         serde_json::from_str(&local_var_content).map_err(Error::from)
     } else {
-        let local_var_entity: Option<UpdateWithdrawalsError> =
+        let local_var_entity: Option<UpdateWithdrawalsSignerError> =
             serde_json::from_str(&local_var_content).ok();
         let local_var_error = ResponseContent {
             status: local_var_status,

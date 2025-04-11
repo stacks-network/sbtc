@@ -8,7 +8,7 @@ Method | HTTP request | Description
 [**get_withdrawal**](WithdrawalApi.md#get_withdrawal) | **GET** /withdrawal/{id} | Get withdrawal handler.
 [**get_withdrawals**](WithdrawalApi.md#get_withdrawals) | **GET** /withdrawal | Get withdrawals handler.
 [**get_withdrawals_for_recipient**](WithdrawalApi.md#get_withdrawals_for_recipient) | **GET** /withdrawal/recipient/{recipient} | Get withdrawals by recipient handler.
-[**update_withdrawals**](WithdrawalApi.md#update_withdrawals) | **PUT** /withdrawal | Update withdrawals handler.
+[**update_withdrawals_sidecar**](WithdrawalApi.md#update_withdrawals_sidecar) | **PUT** /withdrawal_private | Update withdrawals handler.
 
 
 
@@ -128,9 +128,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 
-## update_withdrawals
+## update_withdrawals_sidecar
 
-> models::UpdateWithdrawalsResponse update_withdrawals(update_withdrawals_request_body)
+> models::UpdateWithdrawalsResponse update_withdrawals_sidecar(update_withdrawals_request_body)
 Update withdrawals handler.
 
 ### Parameters

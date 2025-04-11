@@ -95,14 +95,12 @@ integration-env-up-ci: emily-cdk-synth
 		INPUT_CDK_TEMPLATE=./emily/cdk/cdk.out/EmilyStack.template.json \
 		OUTPUT_CDK_TEMPLATE=./emily/cdk/cdk.out/EmilyStack.devenv.template.json \
 		LOCAL_LAMBDA_PATH=empty.zip \
-		TRUSTED_REORG_API_KEY=testApiKey \
 		DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS \
 		python3 docker/sbtc/emily-aws-setup/initialize.py
 	cargo $(CARGO_FLAGS) build --bin emily-server
 	AWS_ACCESS_KEY_ID=xxxxxxxxxxxx \
 		AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx \
 		AWS_REGION=us-west-2 \
-		TRUSTED_REORG_API_KEY=testApiKey \
 		DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS \
 		cargo $(CARGO_FLAGS) run --bin emily-server -- \
 			--host 127.0.0.1 --port 3031 --dynamodb-endpoint http://localhost:8000 > ./target/emily-server.log 2>&1 &
@@ -159,7 +157,6 @@ EMILY_CDK_SOURCE_FILES := $(shell find emily/cdk/lib -type f)
 $(EMILY_CDK_TEMPLATE): $(EMILY_CDK_SOURCE_FILES)
 	AWS_STAGE=local \
 	TABLES_ONLY=true \
-	TRUSTED_REORG_API_KEY=testApiKey \
 	DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS \
 	pnpm --filter $(EMILY_CDK_PROJECT_NAME) run synth
 
