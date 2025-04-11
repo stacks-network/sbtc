@@ -10,9 +10,9 @@ use signer::stacks::contracts::WithdrawalErrorMsg;
 use signer::storage::model::BitcoinBlockRef;
 use signer::storage::model::BitcoinTxId;
 use signer::testing;
+use signer::testing::get_rng;
 
 use fake::Fake;
-use rand::SeedableRng;
 use signer::testing::context::*;
 
 use crate::setup::SweepAmounts;
@@ -100,7 +100,7 @@ async fn accept_withdrawal_validation_happy_path() {
     // sweeping out the funds for a withdrawal request. This is just setup
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -157,7 +157,7 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -223,7 +223,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -290,7 +290,7 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -357,7 +357,7 @@ async fn accept_withdrawal_validation_invalid_amount() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -422,7 +422,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -496,7 +496,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -565,7 +565,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -643,7 +643,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -713,7 +713,7 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -779,7 +779,7 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -844,7 +844,7 @@ async fn accept_withdrawal_validation_request_completed() {
     // sweeping out the funds for a withdrawal request. This is just setup
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);

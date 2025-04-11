@@ -411,9 +411,9 @@ impl StateMachine {
 
 #[cfg(test)]
 mod tests {
-    use rand::rngs::OsRng;
     use wsts::net::Message;
 
+    use crate::testing::get_rng;
     use crate::{dkg::testing::*, testing::IterTestExt};
 
     use super::{
@@ -525,7 +525,7 @@ mod tests {
         let sender1 = signer1.as_public_key();
         let sender2 = signer2.as_public_key();
         let mut state_machine = setup.state_machine;
-        let mut rng = OsRng;
+        let mut rng = get_rng();
 
         let nonce_request = nonce_request(1, 1, 1);
         let nonce_response1 = signer1.process(&nonce_request, &mut rng).unwrap().single();
@@ -578,7 +578,7 @@ mod tests {
         let sender1 = signer1.as_public_key();
         let sender2 = signer2.as_public_key();
         let mut state_machine = setup.state_machine;
-        let mut rng = OsRng;
+        let mut rng = get_rng();
 
         assert_eq!(state_machine.signer_count(), 2);
 
@@ -633,7 +633,7 @@ mod tests {
         let sender1 = signer1.as_public_key();
         let sender2 = signer2.as_public_key();
         let mut state_machine = setup.state_machine;
-        let mut rng = OsRng;
+        let mut rng = get_rng();
 
         let nonce_request = nonce_request(1, 1, 1);
 

@@ -1,5 +1,4 @@
 use blockstack_lib::types::chainstate::StacksAddress;
-use rand::SeedableRng;
 use rand::rngs::OsRng;
 
 use sbtc::testing::regtest;
@@ -13,6 +12,7 @@ use signer::storage::model::BitcoinTxId;
 use signer::storage::model::StacksPrincipal;
 use signer::testing;
 use signer::testing::context::*;
+use signer::testing::get_rng;
 
 use fake::Fake;
 use signer::DEPOSIT_DUST_LIMIT;
@@ -153,7 +153,7 @@ async fn complete_deposit_validation_happy_path() {
     // transactions and a transaction sweeping in the deposited funds.
     // This is just setup and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -217,7 +217,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -286,7 +286,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -349,7 +349,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -432,7 +432,7 @@ async fn complete_deposit_validation_fee_too_low() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
@@ -583,7 +583,7 @@ async fn complete_deposit_validation_fee_too_high() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -657,7 +657,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -728,7 +728,7 @@ async fn complete_deposit_validation_sweep_reorged() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -809,7 +809,7 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -882,7 +882,7 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -952,7 +952,7 @@ async fn complete_deposit_validation_deposit_invalid_sweep() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
@@ -1019,7 +1019,7 @@ async fn complete_deposit_validation_request_completed() {
     // transactions and a transaction sweeping in the deposited funds.
     // This is just setup and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
