@@ -134,6 +134,31 @@ fn btc_client_gets_transaction_info() {
 }
 
 #[test]
+fn btc_client_gets_transaction_info_coinbase() {
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+    let (rpc, _) = regtest::initialize_blockchain();
+
+    // Now let's confirm it and try again
+    let block_hash = rpc.get_blockchain_info().unwrap().best_block_hash;
+
+    let block = rpc.get_block(&block_hash).unwrap();
+    let coinbase = block.coinbase().cloned().unwrap();
+    assert!(coinbase.is_coinbase());
+
+    let response: signer::bitcoin::rpc::BitcoinTxInfo = client
+        .get_tx_info(&coinbase.compute_txid(), &block_hash)
+        .unwrap()
+        .unwrap();
+    // Let's make sure we got the right transaction
+    assert_eq!(response.tx.compute_txid(), coinbase.compute_txid());
+}
+
+#[test]
 fn btc_client_gets_transaction_info_missing_tx() {
     let client = BitcoinCoreClient::new(
         "http://localhost:18443",
