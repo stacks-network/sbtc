@@ -36,7 +36,7 @@ const MAX_SUBSTREAMS_PER_CONNECTION: usize = 20;
 /// The maximum time to wait for a connection negotiation to complete. This is
 /// used to prevent potentially malicious peers from being able to hold a
 /// connection in a pending state for all too long, preventing legitimate peers
-/// from connecting. The timeout is set to 5 seconds, which should be sufficient
+/// from connecting. The timeout is set to 10 seconds, which should be sufficient
 /// for most use cases. If a connection cannot be established within this time,
 /// the connection will be closed and the dialing peer will be notified. This
 /// timeout is applied to both inbound and outbound connections.
