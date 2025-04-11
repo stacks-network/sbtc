@@ -490,7 +490,7 @@ services:
       - default
 
   stacks-api:
-    image: blockstack/stacks-blockchain-api:8.6.0
+    image: hirosystems/stacks-blockchain-api:8.9.0
     container_name: stacks-api
     stop_grace_period: 5s
     ports:
@@ -502,7 +502,6 @@ services:
       - bitcoin
     environment:
       NODE_ENV: "production"
-      GIT_TAG: "v7.10.0-nakamoto.7"
       PG_HOST: "postgres-stacks-api"
       PG_PORT: 5432
       PG_USER: "postgres"
