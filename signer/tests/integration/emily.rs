@@ -15,7 +15,6 @@ use bitcoin::hashes::Hash as _;
 use bitcoincore_rpc_json::Utxo;
 use fake::Fake as _;
 use futures::future::join_all;
-use rand::SeedableRng;
 use test_case::test_case;
 use test_log::test;
 use url::Url;
@@ -57,6 +56,7 @@ use signer::testing::context::TestContext;
 use signer::testing::context::WrappedMock;
 use signer::testing::dummy;
 use signer::testing::dummy::DepositTxConfig;
+use signer::testing::get_rng;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::storage::model::TestData;
@@ -156,7 +156,7 @@ async fn deposit_flow() {
     let context_window = 10;
 
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+    let mut rng = get_rng();
     let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 

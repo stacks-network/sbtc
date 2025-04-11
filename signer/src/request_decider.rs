@@ -592,6 +592,7 @@ mod tests {
     }
 
     #[tokio::test]
+    // TODO(#1466): This test is currently using a known-working fixed seed, but is flaky with other seeds.
     async fn should_store_decisions_for_pending_withdrawal_requests() {
         test_environment()
             .assert_should_store_decisions_for_pending_withdrawal_requests()

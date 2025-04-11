@@ -544,15 +544,15 @@ impl SignerSet {
 #[cfg(test)]
 mod tests {
     use model::BitcoinBlockHash;
-    use rand::SeedableRng;
 
     use crate::testing::dummy;
+    use crate::testing::get_rng;
 
     use super::*;
 
     #[tokio::test]
     async fn should_be_able_to_run_dkg() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut rng = get_rng();
         let network = network::InMemoryNetwork::new();
         let num_signers = 7;
         let threshold = 5;

@@ -19,7 +19,6 @@ use emily_client::apis::deposit_api;
 use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
-use rand::SeedableRng as _;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
 use signer::bitcoin::utxo::SbtcRequests;
@@ -56,6 +55,7 @@ use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
+use signer::testing::get_rng;
 use signer::testing::storage::model::TestData;
 use signer::transaction_coordinator::should_coordinate_dkg;
 use signer::transaction_signer::assert_allow_dkg_begin;
@@ -80,7 +80,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
     let db = testing::storage::new_test_database().await;
     let mut ctx = TestContext::builder()
@@ -355,7 +355,7 @@ async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Vec<TxPrevout>
 /// Then you should be good to go.
 #[tokio::test]
 async fn block_observer_stores_donation_and_sbtc_utxos() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     // We need to populate our databases, so let's fetch the data.
@@ -889,7 +889,7 @@ async fn next_headers_to_process_ignores_known_headers() {
 async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let db = testing::storage::new_test_database().await;
 
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = get_rng();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -979,7 +979,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 /// block observer processes a bitcoin block.
 #[tokio::test]
 async fn block_observer_updates_state_after_observing_bitcoin_block() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(512);
+    let mut rng = get_rng();
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
@@ -1202,7 +1202,7 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
 /// pending DKG shares once they exit the verification window
 #[tokio::test]
 async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(512);
+    let mut rng = get_rng();
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.

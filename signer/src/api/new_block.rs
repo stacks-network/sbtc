@@ -318,7 +318,6 @@ mod tests {
     use bitvec::array::BitArray;
     use clarity::vm::types::PrincipalData;
     use fake::Fake;
-    use rand::SeedableRng as _;
     use rand::rngs::OsRng;
     use secp256k1::SECP256K1;
     use stacks_common::types::chainstate::StacksBlockId;
@@ -330,6 +329,7 @@ mod tests {
     use crate::storage::model::DepositRequest;
     use crate::storage::model::StacksPrincipal;
     use crate::testing::context::*;
+    use crate::testing::get_rng;
     use crate::testing::storage::model::TestData;
 
     /// These were generated from a stacks node after running the
@@ -459,7 +459,7 @@ mod tests {
     /// including verifying the successful database update.
     #[tokio::test]
     async fn test_handle_completed_deposit() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let mut rng = get_rng();
 
         let ctx = TestContext::builder()
             .with_in_memory_storage()
@@ -516,7 +516,7 @@ mod tests {
     /// correctly updates the database and returns the expected response.
     #[tokio::test]
     async fn test_handle_withdrawal_accept() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let mut rng = get_rng();
 
         let ctx = TestContext::builder()
             .with_in_memory_storage()
@@ -566,7 +566,7 @@ mod tests {
     /// the database correctly and returns the expected response.
     #[tokio::test]
     async fn test_handle_withdrawal_create() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let mut rng = get_rng();
 
         let ctx = TestContext::builder()
             .with_in_memory_storage()
@@ -617,7 +617,7 @@ mod tests {
     /// correctly, including updating the database and returning the expected response.
     #[tokio::test]
     async fn test_handle_withdrawal_reject() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let mut rng = get_rng();
 
         let ctx = TestContext::builder()
             .with_in_memory_storage()
