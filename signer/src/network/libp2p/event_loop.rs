@@ -53,6 +53,9 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // Here we create a future that polls the libp2p swarm for events and also
     // publishes messages from the outbox to the network.
     let poll_swarm = async {
+        let _ = ctx
+            .signal(P2PEvent::EventLoopStarted.into())
+            .inspect_err(|error| tracing::error!(%error, "error signalling event loop start"));
         tracing::debug!("p2p network polling started");
 
         loop {
@@ -107,13 +110,16 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                             let _ = swarm.disconnect_peer_id(peer_id);
                         } else {
                             tracing::debug!(%peer_id, ?endpoint, "connected to peer");
-                            if endpoint.is_dialer() {
+                            if endpoint.is_dialer() && swarm.behaviour().kademlia.is_enabled() {
                                 let kad_addr = endpoint.get_remote_address();
                                 tracing::debug!(%peer_id, %kad_addr, "adding address to kademlia");
                                 swarm
                                     .behaviour_mut()
                                     .kademlia
-                                    .add_address(&peer_id, kad_addr.clone());
+                                    .as_mut() // Returns `None` if disabled.
+                                    .map(|kademlia| {
+                                        kademlia.add_address(&peer_id, kad_addr.clone())
+                                    });
                             }
                         }
                     }
@@ -155,19 +161,22 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                             let result = swarm
                                 .behaviour_mut()
                                 .kademlia
-                                .add_address(&peer_id, address.clone());
+                                .as_mut() // Returns `None` if disabled.
+                                .map(|kademlia| kademlia.add_address(&peer_id, address.clone()));
 
-                            match result {
-                                RoutingUpdate::Success => {
-                                    tracing::debug!(%peer_id, %address, "added peer address to kademlia");
+                            if let Some(result) = result {
+                                match result {
+                                    RoutingUpdate::Success => {
+                                        tracing::debug!(%peer_id, %address, "added peer address to kademlia");
+                                    }
+                                    RoutingUpdate::Failed => {
+                                        tracing::warn!(%peer_id, %address, "failed to add peer address to kademlia");
+                                    }
+                                    RoutingUpdate::Pending => {
+                                        tracing::debug!(%peer_id, %address, "request to add peer address to kademlia is pending");
+                                    }
                                 }
-                                RoutingUpdate::Failed => {
-                                    tracing::warn!(%peer_id, %address, "failed to add peer address to kademlia");
-                                }
-                                RoutingUpdate::Pending => {
-                                    tracing::debug!(%peer_id, %address, "request to add peer address to kademlia is pending");
-                                }
-                            }
+                            };
                         }
                     }
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Kademlia(event)) => {
