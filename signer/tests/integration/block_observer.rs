@@ -21,7 +21,6 @@ use emily_client::apis::deposit_api;
 use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
-use rand::SeedableRng as _;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositScriptInputs;
 use sbtc::deposits::ReclaimScriptInputs;
