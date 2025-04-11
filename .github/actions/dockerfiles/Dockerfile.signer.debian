@@ -37,7 +37,7 @@ RUN apt-get update && \
     chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
     apt-get update && \
-    apt-get install -y gh=2.67.0
+    apt-get install -y gh=2.69.0
 
 # ca-certificates is required to establish TLS connections.
 # gettext provides envsubst
