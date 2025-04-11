@@ -31,9 +31,9 @@ jobs:
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
           script: |
-            const tag = `${{ inputs.tag_name }}`.replace(/[^a-zA-Z0-9_.-]/g, '');
+            const semverRegex = /^v?\d+\.\d+\.\d+(-[\w.-]+)?(\+[\w.-]+)?$/;
             if (tag !== `${{ inputs.tag_name }}`) {
-              core.setFailed("Error: The tag contains invalid characters.");
+              core.setFailed("Error: Invalid tag format: "${tag}". Expected SemVer like X.Y.Z, vX.Y.Z-note, or X.Y.Z+note");
             } else {
               github.rest.git.createRef({
                 owner: context.repo.owner,
