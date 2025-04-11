@@ -20,24 +20,23 @@
     "@clarigen/cli": "2.1.2",
     "@clarigen/core": "2.1.2",
     "@clarigen/test": "2.1.2",
-    "@hirosystems/clarinet-sdk": "2.11.2",
-    "@hirosystems/clarinet-sdk-wasm": "2.11.2",
-    "@noble/secp256k1": "^2.1.0",
-    "@scure/base": "^1.1.6",
-    "@scure/btc-signer": "^1.3.1",
-    "@stacks/stacking": "^6.15.0",
-    "@stacks/transactions": "^6.12.0",
+    "@hirosystems/clarinet-sdk": "2.15.2",
+    "@noble/secp256k1": "^2.2.3",
+    "@scure/base": "^1.2.4",
+    "@scure/btc-signer": "^1.7.0",
+    "@stacks/stacking": "^6.17.0",
+    "@stacks/transactions": "^6.17.0",
     "c32check": "^2.0.0",
     "chokidar-cli": "^3.0.0",
-    "vite": "^5.1.4",
-    "vitest": "^1.3.1",
-    "vitest-environment-clarinet": "2.1.0"
+    "vite": "^6.2.2",
+    "vitest": "^3.0.9",
+    "vitest-environment-clarinet": "2.3.0"
   },
   "devDependencies": {
-    "@eslint/js": "^8.56.0",
-    "eslint": "^8.56.0",
-    "prettier": "^3.2.5",
-    "typescript": "^5.4.5",
-    "typescript-eslint": "^7.8.0"
+    "@eslint/js": "^9.22.0",
+    "eslint": "^9.22.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.27.0"
   }
 }
