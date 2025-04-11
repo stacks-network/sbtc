@@ -527,6 +527,15 @@ impl SignerSet {
             .expect("BUG: Failed to acquire read lock")
             .contains(peer_id)
     }
+
+    /// Gets the number of signers in the current signer set.
+    pub fn num_signers(&self) -> usize {
+        #[allow(clippy::expect_used)]
+        self.signers
+            .read()
+            .expect("BUG: Failed to acquire read lock")
+            .len()
+    }
 }
 
 #[cfg(test)]

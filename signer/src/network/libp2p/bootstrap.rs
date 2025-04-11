@@ -38,11 +38,12 @@ impl Config {
     }
 
     /// Adds seed addresses to the configuration.
-    pub fn add_seed_addresses<T>(mut self, seed_addresses: T) -> Self
+    pub fn add_seed_addresses<'a, T>(mut self, seed_addresses: T) -> Self
     where
-        T: IntoIterator<Item = Multiaddr>,
+        T: IntoIterator<Item = &'a Multiaddr>,
     {
-        self.seed_addresses.extend(seed_addresses);
+        self.seed_addresses
+            .extend(seed_addresses.into_iter().cloned());
         self
     }
 
