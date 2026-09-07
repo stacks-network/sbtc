@@ -1,6 +1,7 @@
 //! Command-line utility for constructing sBTC deposit addresses.
 
 use std::str::FromStr as _;
+use std::time::Duration;
 
 use bitcoin::Network;
 use bitcoin::ScriptBuf;
@@ -22,6 +23,7 @@ const DEFAULT_MAX_FEE: u64 = 80_000;
 const DEFAULT_LOCK_TIME: u32 = 950;
 const DEFAULT_STACKS_API_URL: &str = "https://api.hiro.so";
 const DEFAULT_DEPLOYER: &str = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4";
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -188,6 +190,7 @@ async fn fetch_aggregate_key(api_url: &str, deployer: &str) -> Result<XOnlyPubli
     );
     let response = reqwest::Client::new()
         .get(url)
+        .timeout(REQUEST_TIMEOUT)
         .send()
         .await?
         .error_for_status()?
