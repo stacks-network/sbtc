@@ -3,6 +3,7 @@ import {
   fetchSignersPublicKey,
   findWalletValues,
   normalizeXOnlyPublicKey,
+  scriptToAsm,
   type NetworkName,
 } from './deposit'
 import { connectWallet } from './wallet'
@@ -112,7 +113,6 @@ function renderVerifier(): void {
 
         <p class="form-error" id="form-error" role="alert" hidden></p>
         <button class="button button-primary" id="compute" type="submit"><span>Compute deposit address</span><span aria-hidden="true">→</span></button>
-        <p class="privacy-note">Address construction happens in your browser. The site never requests a signature or sends a transaction.</p>
       </form>
 
       <aside class="panel result-panel" aria-live="polite">
@@ -120,27 +120,38 @@ function renderVerifier(): void {
           <img class="result-symbol" src="./icons/stx.svg" alt="" aria-hidden="true" />
           <p class="eyebrow">Your result</p>
           <h2>Ready when<br />you are.</h2>
-          <p>Independently construct the address before sending bitcoin. Connect a wallet to fill in your recipient and reclaim key, or enter both manually.</p>
+          <p>Each sBTC deposit address is constructed for a specific sender and Stacks recipient. Independently construct the address before sending bitcoin. Connect a wallet to fill in your recipient and reclaim key, or enter both manually.</p>
         </div>
         <div id="result" hidden>
           <div class="result-heading">
-            <div><p class="eyebrow">Computed address</p><h2>The deposit address</h2></div>
+            <h2>The deposit address</h2>
             <span class="network-chip" id="result-network"></span>
+          </div>
+          <div class="deposit-warning" role="alert">
+            <span class="deposit-warning-icon" aria-hidden="true">!</span>
+            <div>
+              <strong>Do not send BTC directly to this address</strong>
+              <p>This tool only constructs the address. Unless the deposit is correctly registered in the sBTC system, you will not receive sBTC. <a href="${BRIDGE_URL}" target="_blank" rel="noreferrer">Use the official sBTC Bridge to deposit safely ↗</a></p>
+            </div>
           </div>
           <div class="address-box">
             <code id="deposit-address"></code>
             <button class="copy-button" type="button" data-copy="deposit-address">Copy</button>
           </div>
-          <p class="key-source" id="key-source"></p>
           <details>
-            <summary>Construction details</summary>
+            <summary><span>Construction details</span><span class="details-indicator" aria-hidden="true"></span></summary>
             <div class="detail-block"><span>Signers’ aggregate public key</span><code id="result-signers-key"></code></div>
-            <div class="detail-block"><span>Deposit script</span><code id="deposit-script"></code></div>
-            <div class="detail-block"><span>Reclaim script</span><code id="result-reclaim-script"></code></div>
+            <div class="detail-block">
+              <span>Deposit script ASM</span><code id="deposit-script-asm"></code>
+              <span>Deposit script hex</span><code id="deposit-script"></code>
+            </div>
+            <div class="detail-block">
+              <span>Reclaim script ASM</span><code id="reclaim-script-asm"></code>
+              <span>Reclaim script hex</span><code id="result-reclaim-script"></code>
+            </div>
           </details>
           <div class="result-actions">
             <a class="button button-primary" href="${BRIDGE_URL}" target="_blank" rel="noreferrer">Open the official bridge ↗</a>
-            <p>Use the bridge to complete a deposit.</p>
           </div>
         </div>
       </aside>
@@ -159,7 +170,7 @@ function renderAbout(): void {
       <p class="about-lead">This small, open-source website lets you independently reproduce an sBTC deposit address from the same inputs used by the protocol.</p>
       <div class="about-grid">
         <section><span>01</span><h2>What it does</h2><p>It combines a Stacks recipient, the signers’ aggregate public key, a maximum L1 sweep fee, and your reclaim path into a deterministic Bitcoin Taproot address.</p></section>
-        <section><span>02</span><h2>What it does not do</h2><p>It does not create, sign, broadcast, or track a deposit transaction. Connecting a wallet only reads public addresses and the public key for its P2WPKH payment address.</p></section>
+        <section><span>02</span><h2>What it does not do</h2><p>It does not create, sign, broadcast, or track a deposit transaction. Connecting a wallet only reads public addresses and the public key for its P2WPKH payment address. Address construction happens in your browser. The site never requests a signature or sends a transaction.</p></section>
         <section><span>03</span><h2>Where to deposit</h2><p>Use the <a href="${BRIDGE_URL}" target="_blank" rel="noreferrer">official sBTC Bridge</a> to make an actual deposit. This site is an additional verification tool, not a replacement for the bridge.</p></section>
       </div>
       <div class="about-callout">
@@ -283,9 +294,8 @@ function bindVerifier(): void {
         normalizeXOnlyPublicKey(aggregateKey)
       document.querySelector('#deposit-script')!.textContent = result.depositScript
       document.querySelector('#result-reclaim-script')!.textContent = result.reclaimScript
-      document.querySelector('#key-source')!.textContent = signersKey.value.trim()
-        ? 'Computed with the aggregate public key you supplied. No network request was made.'
-        : `Computed with the current aggregate public key fetched from ${new URL(stacksApi.value).host}.`
+      document.querySelector('#deposit-script-asm')!.textContent = scriptToAsm(result.depositScript)
+      document.querySelector('#reclaim-script-asm')!.textContent = scriptToAsm(result.reclaimScript)
     } catch (cause) {
       showError(error, cause)
     } finally {

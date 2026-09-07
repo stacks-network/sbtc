@@ -55,6 +55,64 @@ function bytesToHex(value: Uint8Array): string {
   return Array.from(value, byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
+export function scriptToAsm(script: string): string {
+  try {
+    const bytes = hexToBytes(script)
+    const operations: string[] = []
+    let offset = 0
+
+    const readLength = (byteCount: number): number => {
+      if (offset + byteCount > bytes.length) throw new Error('Truncated push length')
+      let length = 0
+      for (let index = 0; index < byteCount; index += 1) {
+        length += bytes[offset + index]! * 2 ** (8 * index)
+      }
+      offset += byteCount
+      return length
+    }
+
+    const readPush = (length: number): void => {
+      if (offset + length > bytes.length) throw new Error('Truncated push data')
+      operations.push(bytesToHex(bytes.slice(offset, offset + length)))
+      offset += length
+    }
+
+    while (offset < bytes.length) {
+      const opcode = bytes[offset]!
+      offset += 1
+
+      if (opcode >= 1 && opcode <= 75) {
+        operations.push(`OP_PUSHBYTES_${opcode}`)
+        readPush(opcode)
+        continue
+      }
+      if (opcode === btc.OP.PUSHDATA1) {
+        operations.push('OP_PUSHDATA1')
+        readPush(readLength(1))
+        continue
+      }
+      if (opcode === btc.OP.PUSHDATA2) {
+        operations.push('OP_PUSHDATA2')
+        readPush(readLength(2))
+        continue
+      }
+      if (opcode === btc.OP.PUSHDATA4) {
+        operations.push('OP_PUSHDATA4')
+        readPush(readLength(4))
+        continue
+      }
+
+      const name = Object.entries(btc.OP).find(([, value]) => value === opcode)?.[0]
+      if (!name) throw new Error('Unknown opcode')
+      operations.push(name.startsWith('OP_') ? name : `OP_${name}`)
+    }
+
+    return operations.join(' ')
+  } catch {
+    return 'Unable to decode script'
+  }
+}
+
 export function computeDepositAddress(input: ComputeDepositInput): DepositResult {
   const signersPublicKey = normalizeXOnlyPublicKey(input.signersPublicKey)
   const network = input.network === 'mainnet' ? MAINNET : REGTEST

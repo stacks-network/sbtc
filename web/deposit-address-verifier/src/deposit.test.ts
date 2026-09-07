@@ -4,6 +4,7 @@ import {
   computeDepositAddress,
   findWalletValues,
   normalizeXOnlyPublicKey,
+  scriptToAsm,
 } from './deposit'
 
 const KEY = '033920f589c2b367400732d2dd61d11b300ad95b2b1bbf008eabcf8cddfee0c12c'
@@ -34,6 +35,17 @@ describe('deposit address computation', () => {
     })
     expect(advanced).toEqual(standard)
     expect(standard.address).toMatch(/^bc1p/)
+    expect(scriptToAsm(standard.depositScript)).toMatch(/^OP_PUSHBYTES_\d+ /)
+    expect(scriptToAsm(standard.depositScript)).toContain('OP_CHECKSIG')
+    expect(scriptToAsm(standard.reclaimScript)).toBe(
+      `OP_PUSHBYTES_2 b603 OP_CHECKSEQUENCEVERIFY OP_DROP OP_PUSHBYTES_32 ${KEY.slice(2)} OP_CHECKSIG`,
+    )
+  })
+
+  it('renders push opcodes and minimally encoded script numbers', () => {
+    expect(scriptToAsm('03ffff00b26a')).toBe(
+      'OP_PUSHBYTES_3 ffff00 OP_CHECKSEQUENCEVERIFY OP_RETURN',
+    )
   })
 
   it('selects a P2WPKH address rather than a Taproot address', () => {
