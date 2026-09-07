@@ -1,0 +1,146 @@
+import * as btc from '@scure/btc-signer'
+import {
+  MAINNET,
+  REGTEST,
+  SbtcApiClientMainnet,
+  SbtcApiClientTestnet,
+  UNSPENDABLE_PUB,
+  buildSbtcDepositAddress,
+  buildSbtcDepositScript,
+} from 'sbtc'
+
+export type NetworkName = 'mainnet' | 'testnet'
+
+export const SBTC_DEPLOYERS: Record<NetworkName, string> = {
+  mainnet: 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4',
+  testnet: 'SN3VMHXEN64ZZF71JQ5VESXDWTR301XTTXGF4J8F1',
+}
+
+export interface ComputeDepositInput {
+  network: NetworkName
+  recipient: string
+  maxFee: number
+  lockTime: number
+  reclaimPublicKey?: string
+  reclaimScript?: string
+  signersPublicKey: string
+}
+
+export interface DepositResult {
+  address: string
+  depositScript: string
+  reclaimScript: string
+}
+
+export function normalizeHex(value: string): string {
+  return value.trim().replace(/^0x/i, '').toLowerCase()
+}
+
+export function normalizeXOnlyPublicKey(value: string): string {
+  const key = normalizeHex(value)
+  if (/^[0-9a-f]{64}$/.test(key)) return key
+  if (/^(02|03)[0-9a-f]{64}$/.test(key)) return key.slice(2)
+  throw new Error('Enter a 32-byte x-only or 33-byte compressed public key in hex.')
+}
+
+export function hexToBytes(value: string): Uint8Array {
+  const hex = normalizeHex(value)
+  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-f]+$/.test(hex)) {
+    throw new Error('Enter a complete, even-length hexadecimal script.')
+  }
+  return Uint8Array.from(hex.match(/.{2}/g)!.map(byte => Number.parseInt(byte, 16)))
+}
+
+function bytesToHex(value: Uint8Array): string {
+  return Array.from(value, byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+export function computeDepositAddress(input: ComputeDepositInput): DepositResult {
+  const signersPublicKey = normalizeXOnlyPublicKey(input.signersPublicKey)
+  const network = input.network === 'mainnet' ? MAINNET : REGTEST
+  const recipient = input.recipient.trim()
+  const expectedPrefix = input.network === 'mainnet' ? /^(SP|SM)/ : /^(ST|SN)/
+  if (!expectedPrefix.test(recipient)) {
+    throw new Error(`Enter a ${input.network} Stacks recipient.`)
+  }
+  if (!Number.isSafeInteger(input.maxFee) || input.maxFee < 0) {
+    throw new Error('Maximum fee must be a non-negative whole number.')
+  }
+
+  if (input.reclaimScript) {
+    const reclaimScript = hexToBytes(input.reclaimScript)
+    const depositScript = buildSbtcDepositScript({
+      maxSignerFee: input.maxFee,
+      stacksAddress: recipient,
+      signersPublicKey,
+    })
+    const output = btc.p2tr(
+      UNSPENDABLE_PUB,
+      [{ script: depositScript }, { script: reclaimScript }],
+      network,
+      true,
+    )
+    if (!output.address) throw new Error('The Taproot deposit address could not be constructed.')
+    return {
+      address: output.address,
+      depositScript: bytesToHex(depositScript),
+      reclaimScript: bytesToHex(reclaimScript),
+    }
+  }
+
+  if (!input.reclaimPublicKey) throw new Error('Enter a reclaim public key.')
+  if (!Number.isInteger(input.lockTime) || input.lockTime < 0 || input.lockTime > 65_535) {
+    throw new Error('Lock time must be a whole number from 0 through 65,535 blocks.')
+  }
+  const result = buildSbtcDepositAddress({
+    network,
+    stacksAddress: recipient,
+    signersPublicKey,
+    maxSignerFee: input.maxFee,
+    reclaimLockTime: input.lockTime,
+    reclaimPublicKey: normalizeXOnlyPublicKey(input.reclaimPublicKey),
+  })
+  return {
+    address: result.address,
+    depositScript: result.depositScript,
+    reclaimScript: result.reclaimScript,
+  }
+}
+
+export async function fetchSignersPublicKey(
+  network: NetworkName,
+  stacksApiUrl: string,
+): Promise<string> {
+  const config = {
+    stxApiUrl: stacksApiUrl.trim().replace(/\/$/, ''),
+    sbtcContract: SBTC_DEPLOYERS[network],
+  }
+  const client =
+    network === 'mainnet'
+      ? new SbtcApiClientMainnet(config)
+      : new SbtcApiClientTestnet(config)
+  return normalizeXOnlyPublicKey(await client.fetchSignersPublicKey())
+}
+
+export function findWalletValues(
+  addresses: Array<{ address: string; publicKey: string; symbol?: string; purpose?: string }>,
+  network: NetworkName,
+): { recipient: string; reclaimPublicKey: string } {
+  const stacksPrefix = network === 'mainnet' ? /^(SP|SM)/ : /^(ST|SN)/
+  const bitcoinPrefixes = network === 'mainnet' ? ['bc1q'] : ['tb1q', 'bcrt1q']
+  const recipient = addresses.find(entry => stacksPrefix.test(entry.address))
+  const isP2wpkh = (entry: (typeof addresses)[number]) =>
+    bitcoinPrefixes.some(prefix => entry.address.toLowerCase().startsWith(prefix))
+  const payment =
+    addresses.find(entry => entry.purpose === 'payment' && isP2wpkh(entry)) ??
+    addresses.find(isP2wpkh)
+
+  if (!recipient) throw new Error(`The wallet did not return a ${network} Stacks address.`)
+  if (!payment?.publicKey) {
+    throw new Error(`The wallet did not return a ${network} P2WPKH address and public key.`)
+  }
+  return {
+    recipient: recipient.address,
+    reclaimPublicKey: normalizeXOnlyPublicKey(payment.publicKey),
+  }
+}
