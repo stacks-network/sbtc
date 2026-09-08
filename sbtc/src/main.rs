@@ -1,12 +1,14 @@
-//! Command-line utility for constructing sBTC deposit addresses.
+//! Command-line utilities for working with sBTC Bitcoin addresses.
 
 use std::str::FromStr as _;
 use std::time::Duration;
 
+use bitcoin::Address;
 use bitcoin::Network;
 use bitcoin::ScriptBuf;
 use bitcoin::XOnlyPublicKey;
 use bitcoin::opcodes::all as opcodes;
+use bitcoin::secp256k1::Secp256k1;
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
@@ -55,6 +57,24 @@ struct Cli {
 enum Command {
     /// Compute the Bitcoin address for an sBTC deposit.
     ComputeDepositAddress(ComputeDepositAddress),
+    /// Return the current sBTC signers' Bitcoin address.
+    SignersAddress(SignersAddress),
+}
+
+#[derive(Debug, Args)]
+struct SignersAddress {
+    /// The Bitcoin network for the resulting address.
+    #[arg(long, value_enum, default_value_t = BitcoinNetwork::Mainnet)]
+    network: BitcoinNetwork,
+
+    /// Base URL for the Stacks API used to query the sBTC registry smart
+    /// contract.
+    #[arg(long, default_value = DEFAULT_STACKS_API_URL)]
+    stacks_api_url: String,
+
+    /// The Stacks address that deployed the sBTC registry smart contract.
+    #[arg(long, default_value = DEFAULT_DEPLOYER)]
+    deployer: String,
 }
 
 #[derive(Debug, Args)]
@@ -133,7 +153,17 @@ struct DataVarResponse {
 async fn main() -> Result<(), Error> {
     match Cli::parse().command {
         Command::ComputeDepositAddress(args) => compute_deposit_address(args).await,
+        Command::SignersAddress(args) => signers_address(args).await,
     }
+}
+
+async fn signers_address(args: SignersAddress) -> Result<(), Error> {
+    let aggregate_key = fetch_aggregate_key(&args.stacks_api_url, &args.deployer).await?;
+    let secp = Secp256k1::verification_only();
+    let network: Network = args.network.into();
+    let address = Address::p2tr(&secp, aggregate_key, None, network);
+    println!("{address}");
+    Ok(())
 }
 
 async fn compute_deposit_address(args: ComputeDepositAddress) -> Result<(), Error> {
@@ -237,7 +267,9 @@ mod tests {
             KEY,
         ])
         .unwrap();
-        let Command::ComputeDepositAddress(args) = cli.command;
+        let Command::ComputeDepositAddress(args) = cli.command else {
+            panic!("expected compute-deposit-address command");
+        };
 
         assert_eq!(args.max_fee, DEFAULT_MAX_FEE);
         assert_eq!(args.lock_time, DEFAULT_LOCK_TIME);
@@ -245,6 +277,40 @@ mod tests {
         assert_eq!(args.deployer, DEFAULT_DEPLOYER);
         assert!(args.signers_aggregate_pubkey.is_none());
         assert!(matches!(args.network, BitcoinNetwork::Mainnet));
+    }
+
+    #[test]
+    fn signers_address_defaults() {
+        let cli = Cli::try_parse_from(["sbtc", "signers-address"]).unwrap();
+        let Command::SignersAddress(args) = cli.command else {
+            panic!("expected signers-address command");
+        };
+
+        assert_eq!(args.stacks_api_url, DEFAULT_STACKS_API_URL);
+        assert_eq!(args.deployer, DEFAULT_DEPLOYER);
+        assert!(matches!(args.network, BitcoinNetwork::Mainnet));
+    }
+
+    #[test]
+    fn signers_address_options_are_accepted() {
+        let cli = Cli::try_parse_from([
+            "sbtc",
+            "signers-address",
+            "--network",
+            "regtest",
+            "--stacks-api-url",
+            "http://localhost:3999/",
+            "--deployer",
+            "ST000000000000000000002AMW42H",
+        ])
+        .unwrap();
+        let Command::SignersAddress(args) = cli.command else {
+            panic!("expected signers-address command");
+        };
+
+        assert_eq!(args.stacks_api_url, "http://localhost:3999/");
+        assert_eq!(args.deployer, "ST000000000000000000002AMW42H");
+        assert!(matches!(args.network, BitcoinNetwork::Regtest));
     }
 
     #[test]
@@ -259,7 +325,9 @@ mod tests {
             KEY,
         ])
         .unwrap();
-        let Command::ComputeDepositAddress(args) = cli.command;
+        let Command::ComputeDepositAddress(args) = cli.command else {
+            panic!("expected compute-deposit-address command");
+        };
 
         assert_eq!(args.signers_aggregate_pubkey.as_deref(), Some(KEY));
     }

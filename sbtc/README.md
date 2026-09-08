@@ -4,7 +4,9 @@ A library for creating Bitcoin deposit transactions that can be handled by the s
 
 ## CLI
 
-The `sbtc` binary computes a Bitcoin address for an sBTC deposit. This is useful for independent verification of deposit addresses. Before sending Bitcoin to a computed address, users are strongly encouraged to use the [bridge](https://sbtc.stacks.co), which registers the deposit with Emily as required to complete the deposit and obtain sBTC.
+The `sbtc` binary provides utilities for working with sBTC Bitcoin addresses. It
+can independently construct deposit addresses and retrieve the current signers'
+Bitcoin address from the sBTC registry.
 
 Build the CLI with the `cli` feature enabled from the root of this repository:
 
@@ -12,14 +14,29 @@ Build the CLI with the `cli` feature enabled from the root of this repository:
 $ cargo build --release -p sbtc --features cli
 ```
 
-The official Stacks guide to [pegging BTC into sBTC](https://docs.stacks.co/more-guides/sbtc/bridging-bitcoin/btc-to-sbtc) is another source for constructing sBTC deposit addresses and integrating the complete deposit flow.
-
-Display the available commands, or detailed help for `compute-deposit-address`, with:
+Display the available commands or detailed help for either command with:
 
 ```console
 $ ./target/release/sbtc --help
 $ ./target/release/sbtc compute-deposit-address --help
+$ ./target/release/sbtc signers-address --help
 ```
+
+### Signers address
+
+Return the current sBTC signers' Bitcoin address with:
+
+```console
+$ ./target/release/sbtc signers-address
+```
+
+This fetches the current aggregate public key from the sBTC registry and derives the signers' key-path Taproot address. Use `--network` to select the Bitcoin network, `--stacks-api-url` to query a different Stacks API endpoint, and `--deployer` to select a different sBTC registry deployer.
+
+### Deposit address construction
+
+The official Stacks guide to [pegging BTC into sBTC](https://docs.stacks.co/more-guides/sbtc/bridging-bitcoin/btc-to-sbtc) is another source for constructing sBTC deposit addresses and integrating the complete deposit flow.
+
+Constructing an address is useful for independent verification. Before sending Bitcoin to a computed address, users are strongly encouraged to use the [bridge](https://sbtc.stacks.co), which registers the deposit with Emily as required to complete the deposit and obtain sBTC.
 
 Run the command from the repository root with:
 
