@@ -1,15 +1,6 @@
 name: Deploy sBTC address constructor
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "web/deposit-address-verifier/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/deploy-deposit-address-verifier.yaml"
   workflow_dispatch:
 
 permissions: read-all
@@ -22,8 +13,17 @@ env:
   NODE_VERSION: 24.15.0
 
 jobs:
+  approve:
+    name: Approve deployment
+    runs-on: ubuntu-24.04
+    environment: Tags
+    steps:
+      - name: Approval received
+        run: echo "Deployment approved"
+
   build:
     name: Build static site
+    needs: approve
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -48,10 +48,10 @@ jobs:
         run: pnpm --filter @stacks-sbtc/deposit-address-verifier build
 
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+        uses: stacks-sbtc/actions/github-pages/configure-pages@ed353a33594a2fa97ea6702d838e4a935cce374d
 
       - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        uses: stacks-sbtc/actions/github-pages/upload-pages-artifact@ed353a33594a2fa97ea6702d838e4a935cce374d
         with:
           path: web/deposit-address-verifier/dist
 
@@ -68,4 +68,4 @@ jobs:
     steps:
       - name: Deploy GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: stacks-sbtc/actions/github-pages/deploy-pages@ed353a33594a2fa97ea6702d838e4a935cce374d
