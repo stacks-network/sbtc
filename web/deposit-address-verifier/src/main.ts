@@ -28,13 +28,13 @@ function pageShell(content: string): string {
       <nav aria-label="Primary navigation">
         <a href="#/" data-nav="verify">Construct</a>
         <a href="#/about" data-nav="about">About</a>
-        <a href="${REPOSITORY_URL}" target="_blank" rel="noreferrer">GitHub ↗</a>
+        <a href="${REPOSITORY_URL}" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
       </nav>
     </header>
     <main>${content}</main>
     <footer>
       <span>Open-source, client-side verification.</span>
-      <span><a href="${REPOSITORY_URL}" target="_blank" rel="noreferrer">Source code</a> · <a href="${BRIDGE_URL}" target="_blank" rel="noreferrer">Official sBTC Bridge</a></span>
+      <span><a href="${REPOSITORY_URL}" target="_blank" rel="noopener noreferrer">Source code</a> · <a href="${BRIDGE_URL}" target="_blank" rel="noopener noreferrer">Official sBTC Bridge</a></span>
     </footer>`
 }
 
@@ -131,7 +131,7 @@ function renderVerifier(): void {
             <span class="deposit-warning-icon" aria-hidden="true">!</span>
             <div>
               <strong>Do not send BTC directly to this address</strong>
-              <p>This tool only constructs the address. Unless the deposit is correctly registered in the sBTC system, you will not receive sBTC. <a href="${BRIDGE_URL}" target="_blank" rel="noreferrer">Use the official sBTC Bridge to deposit safely ↗</a></p>
+              <p>This tool only constructs the address. Unless the deposit is correctly registered in the sBTC system, you will not receive sBTC. <a href="${BRIDGE_URL}" target="_blank" rel="noopener noreferrer">Use the official sBTC Bridge to deposit safely ↗</a></p>
             </div>
           </div>
           <div class="address-box">
@@ -151,7 +151,7 @@ function renderVerifier(): void {
             </div>
           </details>
           <div class="result-actions">
-            <a class="button button-primary" href="${BRIDGE_URL}" target="_blank" rel="noreferrer">Open the official bridge ↗</a>
+            <a class="button button-primary" href="${BRIDGE_URL}" target="_blank" rel="noopener noreferrer">Open the official bridge ↗</a>
           </div>
         </div>
       </aside>
@@ -171,11 +171,11 @@ function renderAbout(): void {
       <div class="about-grid">
         <section><span>01</span><h2>What it does</h2><p>It combines a Stacks recipient, the signers’ aggregate public key, a maximum L1 sweep fee, and your reclaim path into a deterministic Bitcoin Taproot address.</p></section>
         <section><span>02</span><h2>What it does not do</h2><p>It does not create, sign, broadcast, or track a deposit transaction. Connecting a wallet only reads public addresses and the public key for its P2WPKH payment address. Address construction happens in your browser. The site never requests a signature or sends a transaction.</p></section>
-        <section><span>03</span><h2>Where to deposit</h2><p>Use the <a href="${BRIDGE_URL}" target="_blank" rel="noreferrer">official sBTC Bridge</a> to make an actual deposit. This site is an additional verification tool, not a replacement for the bridge.</p></section>
+        <section><span>03</span><h2>Where to deposit</h2><p>Use the <a href="${BRIDGE_URL}" target="_blank" rel="noopener noreferrer">official sBTC Bridge</a> to make an actual deposit. This site is an additional verification tool, not a replacement for the bridge.</p></section>
       </div>
       <div class="about-callout">
         <div><p class="eyebrow">Inspect every step</p><h2>Built in the open.</h2></div>
-        <a class="button button-secondary" href="${REPOSITORY_URL}" target="_blank" rel="noreferrer">View the repository ↗</a>
+        <a class="button button-secondary" href="${REPOSITORY_URL}" target="_blank" rel="noopener noreferrer">View the repository ↗</a>
       </div>
     </article>
   `)
@@ -307,9 +307,18 @@ function bindVerifier(): void {
   document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach(button => {
     button.addEventListener('click', async () => {
       const target = document.querySelector(`#${button.dataset.copy}`)?.textContent ?? ''
-      await navigator.clipboard.writeText(target)
-      button.textContent = 'Copied'
-      window.setTimeout(() => (button.textContent = 'Copy'), 1400)
+      button.disabled = true
+      try {
+        await navigator.clipboard.writeText(target)
+        button.textContent = 'Copied'
+      } catch {
+        button.textContent = 'Copy failed'
+      } finally {
+        window.setTimeout(() => {
+          button.textContent = 'Copy'
+          button.disabled = false
+        }, 1400)
+      }
     })
   })
 }

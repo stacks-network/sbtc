@@ -24,4 +24,4 @@ The production files are written to `web/deposit-address-verifier/dist`.
 
 ## Deployment
 
-The `Deploy sBTC address constructor` workflow publishes the static build to GitHub Pages after relevant changes reach `main`. The repository's Pages source must be set to **GitHub Actions** under **Settings → Pages** before the first deployment.
+The `Deploy sBTC address constructor` workflow publishes the static build to GitHub Pages after it has been manually triggered.
