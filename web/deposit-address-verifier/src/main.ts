@@ -280,10 +280,13 @@ function bindVerifier(): void {
         network: selectedNetwork,
         recipient: recipient.value,
         maxFee: parseInteger(maxFee.value, 'Maximum fee'),
-        lockTime: scriptMode ? 0 : parseInteger(lockTime.value, 'Lock time'),
-        reclaimPublicKey: scriptMode ? undefined : reclaimKey.value,
-        reclaimScript: scriptMode ? reclaimScript.value : undefined,
         signersPublicKey: aggregateKey,
+        ...(scriptMode
+          ? { reclaimScript: reclaimScript.value }
+          : {
+              reclaimPublicKey: reclaimKey.value,
+              lockTime: parseInteger(lockTime.value, 'Lock time'),
+            }),
       })
 
       document.querySelector<HTMLElement>('#empty-result')!.hidden = true

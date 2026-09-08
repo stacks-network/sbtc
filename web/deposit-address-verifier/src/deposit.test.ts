@@ -29,7 +29,6 @@ describe('deposit address computation', () => {
       network: 'mainnet',
       recipient: MAINNET_RECIPIENT,
       maxFee: 80_000,
-      lockTime: 950,
       reclaimScript: standard.reclaimScript,
       signersPublicKey: KEY,
     })

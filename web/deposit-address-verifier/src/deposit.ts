@@ -16,15 +16,26 @@ export const SBTC_DEPLOYERS: Record<NetworkName, string> = {
   testnet: 'SN3VMHXEN64ZZF71JQ5VESXDWTR301XTTXGF4J8F1',
 }
 
-export interface ComputeDepositInput {
+interface ComputeDepositBase {
   network: NetworkName
   recipient: string
   maxFee: number
-  lockTime: number
-  reclaimPublicKey?: string
-  reclaimScript?: string
   signersPublicKey: string
 }
+
+export type ComputeDepositInput = ComputeDepositBase &
+  (
+    | {
+        reclaimPublicKey: string
+        lockTime: number
+        reclaimScript?: never
+      }
+    | {
+        reclaimScript: string
+        reclaimPublicKey?: never
+        lockTime?: never
+      }
+  )
 
 export interface DepositResult {
   address: string
@@ -125,7 +136,7 @@ export function computeDepositAddress(input: ComputeDepositInput): DepositResult
     throw new Error('Maximum fee must be a non-negative whole number.')
   }
 
-  if (input.reclaimScript) {
+  if (input.reclaimScript !== undefined) {
     const reclaimScript = hexToBytes(input.reclaimScript)
     const depositScript = buildSbtcDepositScript({
       maxSignerFee: input.maxFee,
