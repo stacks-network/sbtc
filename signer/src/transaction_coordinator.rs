@@ -1241,7 +1241,7 @@ where
             &mut frost_coordinator,
             WstsMessageId::DkgVerification(*aggregate_key),
             tap_sighash.as_byte_array(),
-            SignatureType::Taproot(None),
+            SignatureType::Taproot,
         )
         .await
         .inspect_err(|error| {
@@ -1594,7 +1594,7 @@ where
                 &mut fire_coordinator,
                 message_id,
                 &msg,
-                SignatureType::Taproot(None),
+                SignatureType::Taproot,
             )
             .await?;
 

@@ -245,6 +245,20 @@ pub enum Error {
     #[error("the given sighash is unknown: {0}")]
     UnknownSigHash(SigHash),
 
+    /// This happens when the coordinator requested a WSTS signature type
+    /// that does not match the prevout type this sighash was approved for.
+    #[error(
+        "signature type {signature_type:?} does not match prevout type {prevout_type} for sighash {sighash}"
+    )]
+    SignatureTypeMismatch {
+        /// The sighash the coordinator asked this signer to participate in.
+        sighash: SigHash,
+        /// The prevout type stored when this signer approved the sighash.
+        prevout_type: crate::storage::model::TxPrevoutType,
+        /// The signature type in the coordinator's WSTS request.
+        signature_type: wsts::net::SignatureType,
+    },
+
     /// This should never happen
     #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
     EmptyStacksTenure,

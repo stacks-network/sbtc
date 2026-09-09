@@ -168,7 +168,7 @@ impl Coordinator {
                         return Ok((None, None));
                     } else if self.state == State::Idle {
                         // We are done with the DKG round! Return the operation result
-                        if let SignatureType::Taproot(_) = signature_type {
+                        if let SignatureType::Taproot = signature_type {
                             let schnorr_proof = self
                                 .schnorr_proof
                                 .as_ref()
@@ -607,14 +607,10 @@ impl Coordinator {
 
             self.aggregator.init(&self.party_polynomials)?;
 
-            if let SignatureType::Taproot(merkle_root) = signature_type {
-                let schnorr_proof = self.aggregator.sign_taproot(
-                    &self.message,
-                    &nonces,
-                    shares,
-                    &key_ids,
-                    merkle_root,
-                )?;
+            if let SignatureType::Taproot = signature_type {
+                let schnorr_proof =
+                    self.aggregator
+                        .sign_taproot(&self.message, &nonces, shares, &key_ids, None)?;
                 debug!(
                     r = %schnorr_proof.r,
                     s = %schnorr_proof.s,
@@ -916,13 +912,7 @@ pub mod test {
     fn check_signature_shares_v2() {
         check_signature_shares::<FrostCoordinator>(5, 2, SignatureType::Frost, vec![0]);
         check_signature_shares::<FrostCoordinator>(5, 2, SignatureType::Schnorr, vec![0]);
-        check_signature_shares::<FrostCoordinator>(5, 2, SignatureType::Taproot(None), vec![0]);
-        check_signature_shares::<FrostCoordinator>(
-            5,
-            2,
-            SignatureType::Taproot(Some([23u8; 32])),
-            vec![0],
-        );
+        check_signature_shares::<FrostCoordinator>(5, 2, SignatureType::Taproot, vec![0]);
     }
 
     #[test]

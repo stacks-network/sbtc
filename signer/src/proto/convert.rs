@@ -841,9 +841,9 @@ impl From<SignatureType> for proto::SignatureType {
             SignatureType::Schnorr => {
                 proto::signature_type::SignatureType::Schnorr(proto::SchnorrSignatureType {})
             }
-            SignatureType::Taproot(root) => {
+            SignatureType::Taproot => {
                 proto::signature_type::SignatureType::Taproot(proto::TaprootSignatureType {
-                    merkle_root: root.map(|v| proto::MerkleRoot { root: Some(v.into()) }),
+                    merkle_root: None,
                 })
             }
         };
@@ -859,12 +859,7 @@ impl TryFrom<proto::SignatureType> for SignatureType {
         Ok(match value.signature_type.required()? {
             proto::signature_type::SignatureType::Frost(_) => SignatureType::Frost,
             proto::signature_type::SignatureType::Schnorr(_) => SignatureType::Schnorr,
-            proto::signature_type::SignatureType::Taproot(taproot) => SignatureType::Taproot(
-                taproot
-                    .merkle_root
-                    .map(|v| Ok::<_, Error>(v.root.required()?.into()))
-                    .transpose()?,
-            ),
+            proto::signature_type::SignatureType::Taproot(_) => SignatureType::Taproot,
         })
     }
 }

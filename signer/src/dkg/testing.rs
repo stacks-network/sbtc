@@ -75,7 +75,7 @@ pub fn nonce_request(dkg_id: u64, sign_id: u64, sign_iter_id: u64) -> Message {
         sign_id,
         sign_iter_id,
         message: vec![0; 5],
-        signature_type: SignatureType::Taproot(None),
+        signature_type: SignatureType::Taproot,
     })
 }
 
@@ -102,7 +102,7 @@ pub fn signature_share_request(
         sign_id,
         sign_iter_id,
         message: vec![0; 5],
-        signature_type: SignatureType::Taproot(None),
+        signature_type: SignatureType::Taproot,
         nonce_responses,
     })
 }

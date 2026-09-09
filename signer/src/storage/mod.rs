@@ -462,11 +462,12 @@ pub trait DbRead {
         output_index: u32,
     ) -> impl Future<Output = Result<Option<model::DepositRequest>, Error>> + Send;
 
-    /// Get the bitcoin sighash output.
+    /// Get whether this signer will sign the given bitcoin sighash, the
+    /// aggregate key locking the prevout, and the prevout type.
     fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,
-    ) -> impl Future<Output = Result<Option<(bool, PublicKeyXOnly)>, Error>> + Send;
+    ) -> impl Future<Output = Result<Option<(bool, PublicKeyXOnly, model::TxPrevoutType)>, Error>> + Send;
 
     /// Returns the list of stored peers.
     fn get_p2p_peers(&self) -> impl Future<Output = Result<Vec<model::P2PPeer>, Error>> + Send;

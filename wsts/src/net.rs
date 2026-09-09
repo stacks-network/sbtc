@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 
 use crate::{
-    common::{MerkleRoot, PolyCommitment, PublicNonce, SignatureShare, TupleProof},
+    common::{PolyCommitment, PublicNonce, SignatureShare, TupleProof},
     curve::point::Point,
 };
 
@@ -209,8 +209,8 @@ pub enum SignatureType {
     Frost,
     /// BIP-340 Schnorr proof
     Schnorr,
-    /// BIP-341 Taproot style schnorr proof with a merkle root
-    Taproot(Option<MerkleRoot>),
+    /// BIP-341 Taproot style schnorr proof without a merkle root
+    Taproot,
 }
 
 #[derive(Clone, PartialEq)]

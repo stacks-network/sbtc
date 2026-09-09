@@ -607,9 +607,9 @@ impl Signer {
             let signer_ids = signer_id_set.into_iter().collect::<Vec<_>>();
             let msg = &sign_request.message;
             let signature_shares = match sign_request.signature_type {
-                SignatureType::Taproot(merkle_root) => {
+                SignatureType::Taproot => {
                     self.signer
-                        .sign_taproot(msg, &signer_ids, &key_ids, &nonces, merkle_root)?
+                        .sign_taproot(msg, &signer_ids, &key_ids, &nonces, None)?
                 }
                 SignatureType::Schnorr => {
                     self.signer

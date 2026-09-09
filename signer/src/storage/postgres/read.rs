@@ -2472,15 +2472,16 @@ impl PgRead {
     async fn will_sign_bitcoin_tx_sighash<'e, E>(
         executor: &'e mut E,
         sighash: &model::SigHash,
-    ) -> Result<Option<(bool, PublicKeyXOnly)>, Error>
+    ) -> Result<Option<(bool, PublicKeyXOnly, model::TxPrevoutType)>, Error>
     where
         &'e mut E: sqlx::PgExecutor<'e>,
     {
-        sqlx::query_as::<_, (bool, PublicKeyXOnly)>(
+        sqlx::query_as::<_, (bool, PublicKeyXOnly, model::TxPrevoutType)>(
             r#"
             SELECT
                 will_sign
               , x_only_public_key
+              , prevout_type
             FROM sbtc_signer.bitcoin_tx_sighashes
             WHERE sighash = $1
             "#,
@@ -2992,7 +2993,7 @@ impl DbRead for PgStore {
     async fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,
-    ) -> Result<Option<(bool, PublicKeyXOnly)>, Error> {
+    ) -> Result<Option<(bool, PublicKeyXOnly, model::TxPrevoutType)>, Error> {
         PgRead::will_sign_bitcoin_tx_sighash(self.get_connection().await?.as_mut(), sighash).await
     }
 
@@ -3465,7 +3466,7 @@ impl DbRead for PgTransaction<'_> {
     async fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,
-    ) -> Result<Option<(bool, crate::keys::PublicKeyXOnly)>, Error> {
+    ) -> Result<Option<(bool, crate::keys::PublicKeyXOnly, model::TxPrevoutType)>, Error> {
         let mut tx = self.tx.lock().await;
         PgRead::will_sign_bitcoin_tx_sighash(tx.as_mut(), sighash).await
     }

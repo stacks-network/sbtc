@@ -627,13 +627,13 @@ pub mod test {
                 }
             }
             OperationResult::SignTaproot(sig) => {
-                if let SignatureType::Taproot(merkle_root) = signature_type {
+                if let SignatureType::Taproot = signature_type {
                     for coordinator in coordinators.iter() {
                         let tweaked_public_key = compute::tweaked_public_key(
                             &coordinator
                                 .get_aggregate_public_key()
                                 .expect("No aggregate public key set!"),
-                            merkle_root,
+                            None,
                         );
 
                         assert!(sig.verify(&tweaked_public_key.x(), msg));
@@ -667,13 +667,7 @@ pub mod test {
             &mut coordinators,
             &mut signers,
             &msg,
-            SignatureType::Taproot(None),
-        );
-        run_sign::<Coordinator>(
-            &mut coordinators,
-            &mut signers,
-            &msg,
-            SignatureType::Taproot(Some([128u8; 32])),
+            SignatureType::Taproot,
         );
     }
 

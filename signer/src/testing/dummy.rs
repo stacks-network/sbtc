@@ -988,11 +988,7 @@ impl Dummy<Unit> for SignatureType {
         match rng.gen_range(0..3usize) {
             0 => SignatureType::Frost,
             1 => SignatureType::Schnorr,
-            2 => SignatureType::Taproot(if rng.gen_bool(0.5) {
-                None
-            } else {
-                Some(Faker.fake_with_rng(rng))
-            }),
+            2 => SignatureType::Taproot,
             _ => unreachable!(),
         }
     }

@@ -60,6 +60,7 @@ use lru::LruCache;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
+use wsts::net::SignatureType;
 
 /// LRU cache max size for the stacks signature requests. This is the number of
 /// bitcoin tenures for which we keep track of the signed stacks transactions.
@@ -167,6 +168,14 @@ pub struct AcceptedSigHash {
     sighash: SigHash,
     /// The public key that is used to lock the above signature hash.
     public_key: PublicKeyXOnly,
+}
+
+/// The WSTS signature type required for an approved bitcoin prevout.
+fn expected_signature_type(prevout_type: model::TxPrevoutType) -> SignatureType {
+    match prevout_type {
+        model::TxPrevoutType::SignersInput => SignatureType::Taproot,
+        model::TxPrevoutType::Deposit => SignatureType::Schnorr,
+    }
 }
 
 /// An enum identifying requests for which we can sign for on stacks only once
@@ -850,8 +859,12 @@ where
                     WstsMessageId::Sweep(txid) => {
                         span.record("txid", txid.to_string());
 
-                        let accepted_sighash =
-                            Self::validate_bitcoin_sign_request(&db, &request.message).await;
+                        let accepted_sighash = Self::validate_bitcoin_sign_request(
+                            &db,
+                            &request.message,
+                            request.signature_type,
+                        )
+                        .await;
 
                         Metrics::increment_bitcoin_validation(&accepted_sighash);
 
@@ -939,10 +952,14 @@ where
 
                         // Validate the sighash and upon success, convert it to
                         // a state machine ID.
-                        Self::validate_bitcoin_sign_request(&db, &request.message)
-                            .await?
-                            .sighash
-                            .into()
+                        Self::validate_bitcoin_sign_request(
+                            &db,
+                            &request.message,
+                            request.signature_type,
+                        )
+                        .await?
+                        .sighash
+                        .into()
                     }
 
                     // This is a DKG verification signing round. The data
@@ -1197,8 +1214,13 @@ where
     }
 
     /// Check whether we will sign the message, which is supposed to be a
-    /// bitcoin sighash
-    async fn validate_bitcoin_sign_request<D>(db: &D, msg: &[u8]) -> Result<AcceptedSigHash, Error>
+    /// bitcoin sighash, and that the requested signature type matches the
+    /// prevout this sighash was approved for.
+    async fn validate_bitcoin_sign_request<D>(
+        db: &D,
+        msg: &[u8],
+        signature_type: SignatureType,
+    ) -> Result<AcceptedSigHash, Error>
     where
         D: DbRead,
     {
@@ -1207,8 +1229,17 @@ where
             .into();
 
         match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
-            Some((true, public_key)) => Ok(AcceptedSigHash { public_key, sighash }),
-            Some((false, _)) => Err(Error::InvalidSigHash(sighash)),
+            Some((true, public_key, prevout_type)) => {
+                if signature_type != expected_signature_type(prevout_type) {
+                    return Err(Error::SignatureTypeMismatch {
+                        sighash,
+                        prevout_type,
+                        signature_type,
+                    });
+                }
+                Ok(AcceptedSigHash { public_key, sighash })
+            }
+            Some((false, ..)) => Err(Error::InvalidSigHash(sighash)),
             None => Err(Error::UnknownSigHash(sighash)),
         }
     }
@@ -1684,6 +1715,88 @@ mod tests {
             num_signers: 7,
             test_model_parameters,
         }
+    }
+
+    type MemorySigner = TxSignerEventLoop<
+        TestContext<
+            SharedStore,
+            WrappedMock<MockBitcoinInteract>,
+            WrappedMock<MockStacksInteract>,
+            WrappedMock<MockEmilyInteract>,
+        >,
+        network::in_memory::MpmcBroadcaster,
+    >;
+
+    async fn check_bitcoin_sign_request(
+        prevout_type: model::TxPrevoutType,
+        signature_type: SignatureType,
+    ) -> (SigHash, Result<AcceptedSigHash, Error>) {
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+        let db = context.get_storage_mut();
+        let mut rng = get_rng();
+        let sighash: SigHash = Faker.fake_with_rng(&mut rng);
+        db.write_bitcoin_txs_sighashes(&[model::BitcoinTxSigHash {
+            txid: Faker.fake_with_rng(&mut rng),
+            chain_tip: Faker.fake_with_rng(&mut rng),
+            prevout_txid: Faker.fake_with_rng(&mut rng),
+            prevout_output_index: 0,
+            sighash,
+            prevout_type,
+            validation_result: crate::bitcoin::validation::InputValidationResult::Ok,
+            is_valid_tx: true,
+            will_sign: true,
+            aggregate_key: Faker.fake_with_rng(&mut rng),
+        }])
+        .await
+        .unwrap();
+        let result = MemorySigner::validate_bitcoin_sign_request(
+            &db,
+            sighash.as_byte_array(),
+            signature_type,
+        )
+        .await;
+        (sighash, result)
+    }
+
+    #[test_case(model::TxPrevoutType::Deposit, SignatureType::Schnorr ; "deposit-schnorr")]
+    #[test_case(model::TxPrevoutType::SignersInput, SignatureType::Taproot ; "signers-input-taproot")]
+    #[tokio::test]
+    async fn bitcoin_sign_request_accepts_matching_signature_type(
+        prevout_type: model::TxPrevoutType,
+        signature_type: SignatureType,
+    ) {
+        let (sighash, result) = check_bitcoin_sign_request(prevout_type, signature_type).await;
+        let accepted = result.expect("matching signature type should be accepted");
+        assert_eq!(accepted.sighash, sighash);
+    }
+
+    #[test_case(model::TxPrevoutType::Deposit, SignatureType::Taproot ; "deposit-taproot")]
+    #[test_case(model::TxPrevoutType::SignersInput, SignatureType::Schnorr ; "signers-input-schnorr")]
+    #[test_case(model::TxPrevoutType::Deposit, SignatureType::Frost ; "deposit-frost")]
+    #[test_case(model::TxPrevoutType::SignersInput, SignatureType::Frost ; "signers-input-frost")]
+    #[tokio::test]
+    async fn bitcoin_sign_request_rejects_mismatched_signature_type(
+        prevout_type: model::TxPrevoutType,
+        signature_type: SignatureType,
+    ) {
+        let (sighash, result) = check_bitcoin_sign_request(prevout_type, signature_type).await;
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("mismatched signature type should be rejected"),
+        };
+        assert!(matches!(
+            error,
+            Error::SignatureTypeMismatch {
+                sighash: rejected,
+                prevout_type: rejected_prevout,
+                signature_type: rejected_type,
+            } if rejected == sighash
+                && rejected_prevout == prevout_type
+                && rejected_type == signature_type
+        ));
     }
 
     #[ignore = "we have a test for this"]
