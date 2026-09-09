@@ -28,6 +28,9 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
   background: radial-gradient(circle at 78% 8%, #e5edff 0, transparent 28rem), #f7f9ff;
 }
 button,
@@ -570,14 +573,14 @@ details[open] ~ .result-actions {
 .about {
   max-width: 980px;
   margin: 0 auto;
-  padding: 90px 0 40px;
+  padding: 46px 0 24px;
 }
 .about > h1 {
   max-width: 800px;
 }
 .about-lead {
   max-width: 760px;
-  margin: 38px 0 75px;
+  margin: 24px 0 36px;
   color: var(--muted);
   font-size: 1.28rem;
   line-height: 1.7;
@@ -615,9 +618,9 @@ details[open] ~ .result-actions {
   justify-content: space-between;
   align-items: center;
   gap: 30px;
-  margin-top: 84px;
+  margin-top: 32px;
   border-radius: 20px;
-  padding: 34px;
+  padding: 24px;
   background: #eaf0ff;
 }
 .about-callout .eyebrow {
