@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="How the sBTC address constructor works and how to deposit safely."
+    />
+    <meta name="theme-color" content="#f7f9ff" />
+    <title>About | sBTC address constructor</title>
+    <link rel="icon" type="image/svg+xml" href="./icons/sbtc.svg" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="sBTC address constructor home">
+        <img src="./icons/sbtc.svg" alt="" aria-hidden="true" />
+        <span>sBTC address constructor</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="./" data-nav="verify">Construct</a>
+        <a href="./about.html" data-nav="about" aria-current="page">About</a>
+        <a href="https://github.com/stacks-sbtc/sbtc" target="_blank" rel="noopener noreferrer"
+          >GitHub ↗</a
+        >
+      </nav>
+    </header>
+    <main>
+      <article class="about">
+        <p class="eyebrow">About this tool</p>
+        <h1>Verify the address yourself.</h1>
+        <p class="about-lead">
+          This small, open-source website lets you independently reproduce an sBTC deposit address
+          from the same inputs used by the protocol.
+        </p>
+        <div class="about-grid">
+          <section>
+            <span>01</span>
+            <h2>What it does</h2>
+            <p>
+              It combines a Stacks recipient, the signers’ aggregate public key, a maximum L1 sweep
+              fee, and your reclaim path into a deterministic Bitcoin Taproot address.
+            </p>
+          </section>
+          <section>
+            <span>02</span>
+            <h2>What it does not do</h2>
+            <p>
+              It does not create, sign, broadcast, or track a deposit transaction. Connecting a
+              wallet only reads public addresses and the public key for its P2WPKH payment address.
+              Address construction happens in your browser. The site never requests a signature or
+              sends a transaction.
+            </p>
+          </section>
+          <section>
+            <span>03</span>
+            <h2>Where to deposit</h2>
+            <p>
+              Use the
+              <a href="https://sbtc.stacks.co/" target="_blank" rel="noopener noreferrer"
+                >official sBTC Bridge</a
+              >
+              to make an actual deposit. This site is an additional verification tool, not a
+              replacement for the bridge.
+            </p>
+          </section>
+        </div>
+        <div class="about-callout">
+          <div>
+            <p class="eyebrow">Inspect every step</p>
+            <h2>Built in the open.</h2>
+          </div>
+          <a
+            class="button button-secondary"
+            href="https://github.com/stacks-sbtc/sbtc"
+            target="_blank"
+            rel="noopener noreferrer"
+            >View the repository ↗</a
+          >
+        </div>
+      </article>
+    </main>
+    <footer>
+      <span>Open-source, client-side verification.</span>
+      <span
+        ><a href="https://github.com/stacks-sbtc/sbtc" target="_blank" rel="noopener noreferrer"
+          >Source code</a
+        >
+        ·
+        <a href="https://sbtc.stacks.co/" target="_blank" rel="noopener noreferrer"
+          >Official sBTC Bridge</a
+        ></span
+      >
+    </footer>
+  </body>
+</html>
