@@ -17,6 +17,7 @@ Run the checks and create the static build with:
 
 ```bash
 pnpm --filter @stacks-sbtc/deposit-address-verifier test
+pnpm --filter @stacks-sbtc/deposit-address-verifier lint
 pnpm --filter @stacks-sbtc/deposit-address-verifier build
 ```
 

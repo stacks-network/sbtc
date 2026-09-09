@@ -44,6 +44,9 @@ jobs:
       - name: Test address constructor
         run: pnpm --filter @stacks-sbtc/deposit-address-verifier test
 
+      - name: Lint address constructor
+        run: pnpm --filter @stacks-sbtc/deposit-address-verifier lint
+
       - name: Build address constructor
         run: pnpm --filter @stacks-sbtc/deposit-address-verifier build
 

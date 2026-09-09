@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "format": "oxfmt --write src vite.config.ts index.html about.html",
+    "lint": "oxfmt --check src vite.config.ts index.html about.html"
   },
   "dependencies": {
     "@scure/btc-signer": "2.0.1",
@@ -14,6 +16,7 @@
     "sbtc": "0.3.2"
   },
   "devDependencies": {
+    "oxfmt": "0.66.0",
     "typescript": "5.9.3",
     "vite": "8.0.9",
     "vitest": "4.1.4"
