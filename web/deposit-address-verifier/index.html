@@ -2,6 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:* wss: ws://localhost:* ws://127.0.0.1:*; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
@@ -9,10 +13,336 @@
     />
     <meta name="theme-color" content="#f7f9ff" />
     <title>sBTC address constructor</title>
+    <link rel="icon" type="image/svg+xml" href="./icons/sbtc.svg" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <div id="app"></div>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="sBTC address constructor home">
+        <img src="./icons/sbtc.svg" alt="" aria-hidden="true" />
+        <span>sBTC address constructor</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="./" data-nav="verify" aria-current="page">Construct</a>
+        <a href="./about.html" data-nav="about">About</a>
+        <a href="https://github.com/stacks-sbtc/sbtc" target="_blank" rel="noopener noreferrer"
+          >GitHub ↗</a
+        >
+      </nav>
+    </header>
+    <main>
+      <noscript
+        >This constructor needs JavaScript to compute addresses. The About page is available without
+        it.</noscript
+      >
+      <section class="intro" aria-labelledby="page-title">
+        <h1 id="page-title">Compute an sBTC deposit address</h1>
+      </section>
+
+      <section class="workspace">
+        <form id="verifier-form" class="panel form-panel" novalidate>
+          <div class="wallet-row">
+            <div>
+              <span class="step-label">Optional</span>
+              <strong id="wallet-status"
+                >Connect a wallet to fill in your address and public key</strong
+              >
+            </div>
+            <button class="button button-secondary" id="connect-wallet" type="button">
+              Connect wallet
+            </button>
+          </div>
+
+          <div class="divider"></div>
+
+          <label class="field">
+            <span class="field-label"
+              ><span>Stacks recipient</span
+              ><span
+                class="tooltip"
+                tabindex="0"
+                aria-label="The Stacks principal that will receive the minted sBTC. It may be a standard principal or a smart contract principal."
+                data-tooltip="The Stacks principal that will receive the minted sBTC. It may be a standard principal or a smart contract principal."
+                >?</span
+              ></span
+            >
+            <input
+              id="recipient"
+              name="recipient"
+              type="text"
+              placeholder="SP… or SM…"
+              spellcheck="false"
+              autocomplete="off"
+              required
+            />
+          </label>
+
+          <div id="public-key-fields">
+            <label class="field">
+              <span class="field-label"
+                ><span>Reclaim public key <small>x-only or compressed hex</small></span
+                ><span
+                  class="tooltip"
+                  tabindex="0"
+                  aria-label="The secp256k1 public key controlling the reclaim path after its configured lock time expires. Use a key whose private key you control."
+                  data-tooltip="The secp256k1 public key controlling the reclaim path after its configured lock time expires. Use a key whose private key you control."
+                  >?</span
+                ></span
+              >
+              <input
+                id="reclaim-key"
+                name="reclaimKey"
+                type="text"
+                placeholder="02… / 03… / 32-byte x-only key"
+                spellcheck="false"
+                autocomplete="off"
+                required
+              />
+            </label>
+          </div>
+
+          <button
+            class="advanced-toggle"
+            id="advanced-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="advanced-fields"
+          >
+            <span>Advanced options</span><span aria-hidden="true">＋</span>
+          </button>
+          <div id="advanced-fields" class="advanced-fields" hidden>
+            <div class="advanced-parameter-grid">
+              <label class="field">
+                <span class="field-label"
+                  ><span>Network</span
+                  ><span
+                    class="tooltip"
+                    tabindex="0"
+                    aria-label="Select the sBTC network. Stacks testnet deposits use Bitcoin regtest addresses."
+                    data-tooltip="Select the sBTC network. Stacks testnet deposits use Bitcoin regtest addresses."
+                    >?</span
+                  ></span
+                >
+                <select id="network" name="network">
+                  <option value="mainnet" selected>Mainnet</option>
+                  <option value="testnet">Testnet (Bitcoin regtest)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label"
+                  ><span>Stacks API URL</span
+                  ><span
+                    class="tooltip"
+                    tabindex="0"
+                    aria-label="The Stacks API queried for the current signer aggregate public key from the network’s sBTC registry contract."
+                    data-tooltip="The Stacks API queried for the current signer aggregate public key from the network’s sBTC registry contract."
+                    >?</span
+                  ></span
+                >
+                <input
+                  id="stacks-api"
+                  name="stacksApi"
+                  type="url"
+                  value="https://api.hiro.so"
+                  spellcheck="false"
+                  required
+                />
+              </label>
+            </div>
+            <div class="advanced-parameter-grid">
+              <label class="field">
+                <span class="field-label"
+                  ><span>Maximum L1 sweep fee <small>sats</small></span
+                  ><span
+                    class="tooltip"
+                    tabindex="0"
+                    aria-label="The most the sBTC signers may deduct for the Bitcoin L1 fee when sweeping this deposit. The official bridge currently uses 80,000 sats."
+                    data-tooltip="The most the sBTC signers may deduct for the Bitcoin L1 fee when sweeping this deposit. The official bridge currently uses 80,000 sats."
+                    >?</span
+                  ></span
+                >
+                <input
+                  id="max-fee"
+                  name="maxFee"
+                  type="number"
+                  value="80000"
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                  required
+                />
+              </label>
+              <label class="field" id="advanced-lock-time-field">
+                <span class="field-label"
+                  ><span>Reclaim lock time <small>blocks</small></span
+                  ><span
+                    class="tooltip"
+                    tabindex="0"
+                    aria-label="The number of Bitcoin blocks that must be mined after the deposit is confirmed before the standard reclaim path can be spent. The official bridge currently uses 950 blocks."
+                    data-tooltip="The number of Bitcoin blocks that must be mined after the deposit is confirmed before the standard reclaim path can be spent. The official bridge currently uses 950 blocks."
+                    >?</span
+                  ></span
+                >
+                <input
+                  id="lock-time"
+                  name="lockTime"
+                  type="number"
+                  value="950"
+                  min="0"
+                  max="65535"
+                  step="1"
+                  inputmode="numeric"
+                  required
+                />
+              </label>
+            </div>
+            <fieldset class="mode-field">
+              <legend>
+                <span>Reclaim path</span
+                ><span
+                  class="tooltip"
+                  tabindex="0"
+                  aria-label="Choose the standard public-key reclaim path or provide every byte of an advanced reclaim script."
+                  data-tooltip="Choose the standard public-key reclaim path or provide every byte of an advanced reclaim script."
+                  >?</span
+                >
+              </legend>
+              <label
+                ><input type="radio" name="reclaimMode" value="key" checked /> Public key + lock
+                time</label
+              >
+              <label
+                ><input type="radio" name="reclaimMode" value="script" /> Complete reclaim
+                script</label
+              >
+            </fieldset>
+            <label class="field" id="script-field" hidden>
+              <span class="field-label"
+                ><span>Complete reclaim script <small>hex</small></span
+                ><span
+                  class="tooltip"
+                  tabindex="0"
+                  aria-label="The complete Taproot reclaim leaf in hexadecimal, including its lock-time prefix."
+                  data-tooltip="The complete Taproot reclaim leaf in hexadecimal, including its lock-time prefix."
+                  >?</span
+                ></span
+              >
+              <textarea
+                id="reclaim-script"
+                name="reclaimScript"
+                rows="4"
+                placeholder="Include the lock-time prefix…"
+                spellcheck="false"
+                disabled
+              ></textarea>
+              <small
+                >These exact bytes become the reclaim Taproot leaf. This advanced input is not
+                checked for spendability.</small
+              >
+            </label>
+            <label class="field">
+              <span class="field-label"
+                ><span>Signers’ aggregate public key <small>optional override</small></span
+                ><span
+                  class="tooltip"
+                  tabindex="0"
+                  aria-label="The current x-only aggregate public key controlled by the sBTC signer set. Supplying it skips the Stacks API request."
+                  data-tooltip="The current x-only aggregate public key controlled by the sBTC signer set. Supplying it skips the Stacks API request."
+                  >?</span
+                ></span
+              >
+              <input
+                id="signers-key"
+                name="signersKey"
+                type="text"
+                placeholder="Fetched from the sBTC registry when blank"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+          </div>
+
+          <p class="form-error" id="form-error" role="alert" hidden></p>
+          <button class="button button-primary" id="compute" type="submit">
+            <span>Compute deposit address</span><span aria-hidden="true">→</span>
+          </button>
+        </form>
+
+        <aside class="panel result-panel" aria-live="polite">
+          <div id="empty-result" class="empty-result">
+            <img class="result-symbol" src="./icons/stx.svg" alt="" aria-hidden="true" />
+            <p class="eyebrow">Your result</p>
+            <h2>Ready when<br />you are.</h2>
+            <p>
+              Each sBTC deposit address is constructed for a specific sender and Stacks recipient.
+              Independently construct the address before sending bitcoin. Connect a wallet to fill
+              in your recipient and reclaim key, or enter both manually.
+            </p>
+          </div>
+          <div id="result" hidden>
+            <div class="result-heading">
+              <h2>The deposit address</h2>
+              <span class="network-chip" id="result-network"></span>
+            </div>
+            <div class="deposit-warning" role="alert">
+              <span class="deposit-warning-icon" aria-hidden="true">!</span>
+              <div>
+                <strong>Do not send BTC directly to this address</strong>
+                <p>
+                  This tool only constructs the address. Unless the deposit is correctly registered
+                  in the sBTC system, you will not receive sBTC.
+                  <a href="https://sbtc.stacks.co/" target="_blank" rel="noopener noreferrer"
+                    >Use the official sBTC Bridge to deposit safely ↗</a
+                  >
+                </p>
+              </div>
+            </div>
+            <div class="address-box">
+              <code id="deposit-address"></code>
+              <button class="copy-button" type="button" data-copy="deposit-address">Copy</button>
+            </div>
+            <details>
+              <summary>
+                <span>Construction details</span
+                ><span class="details-indicator" aria-hidden="true"></span>
+              </summary>
+              <div class="detail-block">
+                <span>Signers’ aggregate public key</span><code id="result-signers-key"></code>
+              </div>
+              <div class="detail-block">
+                <span>Deposit script ASM</span><code id="deposit-script-asm"></code>
+                <span>Deposit script hex</span><code id="deposit-script"></code>
+              </div>
+              <div class="detail-block">
+                <span>Reclaim script ASM</span><code id="reclaim-script-asm"></code>
+                <span>Reclaim script hex</span><code id="result-reclaim-script"></code>
+              </div>
+            </details>
+            <div class="result-actions">
+              <a
+                class="button button-primary"
+                href="https://sbtc.stacks.co/"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Open the official bridge ↗</a
+              >
+            </div>
+          </div>
+        </aside>
+      </section>
+    </main>
+    <footer>
+      <span>Open-source, client-side verification.</span>
+      <span
+        ><a href="https://github.com/stacks-sbtc/sbtc" target="_blank" rel="noopener noreferrer"
+          >Source code</a
+        >
+        ·
+        <a href="https://sbtc.stacks.co/" target="_blank" rel="noopener noreferrer"
+          >Official sBTC Bridge</a
+        ></span
+      >
+    </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
