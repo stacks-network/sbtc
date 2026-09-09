@@ -102,7 +102,7 @@ function renderVerifier(): void {
           </fieldset>
           <label class="field" id="script-field" hidden>
             ${fieldLabel('Complete reclaim script', 'The complete Taproot reclaim leaf in hexadecimal, including its lock-time prefix.', 'hex')}
-            <textarea id="reclaim-script" name="reclaimScript" rows="4" placeholder="Include the lock-time prefix…" spellcheck="false"></textarea>
+            <textarea id="reclaim-script" name="reclaimScript" rows="4" placeholder="Include the lock-time prefix…" spellcheck="false" disabled></textarea>
             <small>These exact bytes become the reclaim Taproot leaf. This advanced input is not checked for spendability.</small>
           </label>
           <label class="field">
@@ -197,6 +197,18 @@ function bindVerifier(): void {
   const error = document.querySelector<HTMLParagraphElement>('#form-error')!
   const compute = document.querySelector<HTMLButtonElement>('#compute')!
   const connectButton = document.querySelector<HTMLButtonElement>('#connect-wallet')!
+  let active = true
+  let revision = 0
+  const invalidateResult = () => {
+    revision += 1
+    resultPanel.querySelector<HTMLElement>('#result')!.hidden = true
+    resultPanel.querySelector<HTMLElement>('#empty-result')!.hidden = false
+    error.hidden = true
+    compute.disabled = false
+    compute.firstElementChild!.textContent = 'Compute deposit address'
+  }
+  form.addEventListener('input', invalidateResult)
+  form.addEventListener('change', invalidateResult)
 
   document.querySelector('#advanced-toggle')!.addEventListener('click', event => {
     const button = event.currentTarget as HTMLButtonElement
@@ -216,6 +228,9 @@ function bindVerifier(): void {
       reclaimKey.required = !scriptMode
       lockTime.required = !scriptMode
       reclaimScript.required = scriptMode
+      reclaimKey.disabled = scriptMode
+      lockTime.disabled = scriptMode
+      reclaimScript.disabled = !scriptMode
     })
   })
 
@@ -236,6 +251,8 @@ function bindVerifier(): void {
   formObserver.observe(form)
   window.addEventListener('resize', syncCollapsedPanelHeight)
   cleanupVerifier = () => {
+    active = false
+    revision += 1
     formObserver.disconnect()
     window.removeEventListener('resize', syncCollapsedPanelHeight)
   }
@@ -246,12 +263,15 @@ function bindVerifier(): void {
     connectButton.textContent = 'Opening wallet…'
     try {
       const addresses = await connectWallet()
+      if (!active) return
       const values = findWalletValues(addresses, network.value as NetworkName)
+      invalidateResult()
       recipient.value = values.recipient
       reclaimKey.value = values.reclaimPublicKey
       document.querySelector('#wallet-status')!.textContent = 'Wallet details added'
       connectButton.textContent = 'Reconnect'
     } catch (cause) {
+      if (!active) return
       showError(error, cause)
       connectButton.textContent = 'Connect wallet'
     } finally {
@@ -261,8 +281,10 @@ function bindVerifier(): void {
 
   form.addEventListener('submit', async event => {
     event.preventDefault()
-    error.hidden = true
+    invalidateResult()
     if (!form.reportValidity()) return
+    const submittedRevision = revision
+    const isCurrent = () => active && revision === submittedRevision
     compute.disabled = true
     compute.firstElementChild!.textContent = signersKey.value.trim()
       ? 'Computing…'
@@ -270,24 +292,25 @@ function bindVerifier(): void {
 
     try {
       const selectedNetwork = network.value as NetworkName
-      const aggregateKey = signersKey.value.trim()
-        ? signersKey.value
-        : await fetchSignersPublicKey(selectedNetwork, stacksApi.value)
       const scriptMode =
-        document.querySelector<HTMLInputElement>('input[name="reclaimMode"]:checked')!.value ===
+        form.querySelector<HTMLInputElement>('input[name="reclaimMode"]:checked')!.value ===
         'script'
-      const result = computeDepositAddress({
+      const inputs = {
         network: selectedNetwork,
         recipient: recipient.value,
         maxFee: parseInteger(maxFee.value, 'Maximum fee'),
-        signersPublicKey: aggregateKey,
         ...(scriptMode
           ? { reclaimScript: reclaimScript.value }
           : {
               reclaimPublicKey: reclaimKey.value,
               lockTime: parseInteger(lockTime.value, 'Lock time'),
             }),
-      })
+      }
+      const aggregateKey = signersKey.value.trim()
+        ? signersKey.value
+        : await fetchSignersPublicKey(selectedNetwork, stacksApi.value)
+      if (!isCurrent()) return
+      const result = computeDepositAddress({ ...inputs, signersPublicKey: aggregateKey })
 
       document.querySelector<HTMLElement>('#empty-result')!.hidden = true
       document.querySelector<HTMLElement>('#result')!.hidden = false
@@ -300,10 +323,12 @@ function bindVerifier(): void {
       document.querySelector('#deposit-script-asm')!.textContent = scriptToAsm(result.depositScript)
       document.querySelector('#reclaim-script-asm')!.textContent = scriptToAsm(result.reclaimScript)
     } catch (cause) {
-      showError(error, cause)
+      if (isCurrent()) showError(error, cause)
     } finally {
-      compute.disabled = false
-      compute.firstElementChild!.textContent = 'Compute deposit address'
+      if (isCurrent()) {
+        compute.disabled = false
+        compute.firstElementChild!.textContent = 'Compute deposit address'
+      }
     }
   })
 

@@ -1,4 +1,5 @@
 import * as btc from '@scure/btc-signer'
+import { PubT, validatePubkey } from '@scure/btc-signer/utils.js'
 import {
   MAINNET,
   REGTEST,
@@ -49,9 +50,16 @@ export function normalizeHex(value: string): string {
 
 export function normalizeXOnlyPublicKey(value: string): string {
   const key = normalizeHex(value)
-  if (/^[0-9a-f]{64}$/.test(key)) return key
-  if (/^(02|03)[0-9a-f]{64}$/.test(key)) return key.slice(2)
-  throw new Error('Enter a 32-byte x-only or 33-byte compressed public key in hex.')
+  if (!/^(?:[0-9a-f]{64}|(?:02|03)[0-9a-f]{64})$/.test(key)) {
+    throw new Error('Enter a 32-byte x-only or 33-byte compressed public key in hex.')
+  }
+  const xOnly = key.length === 66 ? key.slice(2) : key
+  try {
+    validatePubkey(hexToBytes(xOnly), PubT.schnorr)
+  } catch {
+    throw new Error('Enter a valid secp256k1 public key.')
+  }
+  return xOnly
 }
 
 export function hexToBytes(value: string): Uint8Array {
@@ -131,6 +139,11 @@ export function computeDepositAddress(input: ComputeDepositInput): DepositResult
   const expectedPrefix = input.network === 'mainnet' ? /^(SP|SM)/ : /^(ST|SN)/
   if (!expectedPrefix.test(recipient)) {
     throw new Error(`Enter a ${input.network} Stacks recipient.`)
+  }
+  // The SDK checks the address checksum, but splits contract principals at
+  // periods without validating the name or rejecting trailing components.
+  if (!/^(?:SP|SM|ST|SN)[0-9A-Z]+(?:\.[a-zA-Z][a-zA-Z0-9_-]{0,39})?$/.test(recipient)) {
+    throw new Error('Enter a valid Stacks principal, including a valid contract name if supplied.')
   }
   if (!Number.isSafeInteger(input.maxFee) || input.maxFee < 0) {
     throw new Error('Maximum fee must be a non-negative whole number.')

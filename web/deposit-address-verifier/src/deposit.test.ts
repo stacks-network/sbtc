@@ -11,6 +11,38 @@ const KEY = '033920f589c2b367400732d2dd61d11b300ad95b2b1bbf008eabcf8cddfee0c12c'
 const MAINNET_RECIPIENT = 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4'
 
 describe('deposit address computation', () => {
+  const validInput = {
+    network: 'mainnet' as const,
+    recipient: MAINNET_RECIPIENT,
+    maxFee: 80_000,
+    lockTime: 950,
+    reclaimPublicKey: KEY,
+    signersPublicKey: KEY,
+  }
+
+  it.each(['reclaimPublicKey', 'signersPublicKey'] as const)(
+    'rejects invalid curve points in %s', field => {
+      for (const invalidKey of ['00'.repeat(32), 'ff'.repeat(32), `02${'00'.repeat(32)}`]) {
+        expect(() => computeDepositAddress({ ...validInput, [field]: invalidKey }))
+          .toThrow('valid secp256k1 public key')
+      }
+    },
+  )
+
+  it.each(['.', '.foo.bar', '.123', '.bad name', '.foo!', `.${'a'.repeat(41)}`])(
+    'rejects malformed contract suffix %s', suffix => {
+      expect(() => computeDepositAddress({ ...validInput, recipient: MAINNET_RECIPIENT + suffix }))
+        .toThrow('valid Stacks principal')
+    },
+  )
+
+  it('accepts a valid contract principal and checks the address checksum', () => {
+    expect(computeDepositAddress({ ...validInput, recipient: `${MAINNET_RECIPIENT}.my-contract_1` }).address)
+      .toMatch(/^bc1p/)
+    expect(() => computeDepositAddress({ ...validInput, recipient: `${MAINNET_RECIPIENT.slice(0, -1)}5` }))
+      .toThrow()
+  })
+
   it('accepts compressed and x-only keys', () => {
     expect(normalizeXOnlyPublicKey(`0x${KEY}`)).toBe(KEY.slice(2))
     expect(normalizeXOnlyPublicKey(KEY.slice(2))).toBe(KEY.slice(2))
