@@ -23,7 +23,7 @@ const DEFAULT_MAX_FEE: u64 = 80_000;
 const DEFAULT_LOCK_TIME: u32 = 950;
 const DEFAULT_STACKS_API_URL: &str = "https://api.hiro.so";
 const DEFAULT_DEPLOYER: &str = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
