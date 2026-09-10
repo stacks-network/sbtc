@@ -571,8 +571,6 @@ details[open] ~ .result-actions {
 }
 
 .about {
-  max-width: 980px;
-  margin: 0 auto;
   padding: 46px 0 24px;
 }
 .about > h1 {
