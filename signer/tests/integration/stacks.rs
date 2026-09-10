@@ -1,6 +1,8 @@
+use std::borrow::Cow;
 use std::str::FromStr as _;
 use std::time::Duration;
 
+use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::SinglesigHashMode;
 use blockstack_lib::chainstate::stacks::SinglesigSpendingCondition;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
@@ -11,16 +13,22 @@ use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPublicKeyEncoding;
 use blockstack_lib::chainstate::stacks::TransactionSpendingCondition;
 use blockstack_lib::chainstate::stacks::TransactionVersion;
+use blockstack_lib::chainstate::stacks::address::PoxAddressType20;
+use blockstack_lib::chainstate::stacks::address::PoxAddressType32;
+use clarity::codec::StacksMessageCodec as _;
 use clarity::consts::CHAIN_ID_TESTNET;
 use clarity::types::chainstate::StacksAddress;
 use clarity::util::secp256k1::MessageSignature;
 use clarity::vm::types::PrincipalData;
 use clarity::vm::types::QualifiedContractIdentifier;
+use sbtc::webhooks::TransactionEvent;
+use signer::error::Error;
 use signer::signature::RecoverableEcdsaSignature as _;
 use signer::stacks::api::StacksClient;
 use signer::stacks::api::update_db_with_unknown_ancestors;
 use signer::stacks::contracts::AsTxPayload as _;
 use signer::storage::model::ConsensusHash;
+use signer::storage::model::StacksBlockHash;
 use signer::testing::stacks::assert_db_contains_stacks_headers;
 use signer::util::FutureExt as _;
 use stacks_common::address::AddressHashMode;
@@ -30,6 +38,9 @@ use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_SINGLESIG;
 // for tests.
 // Address: ST1YEHRRYJ4GF9CYBFFN0ZVCXX1APSBEEQ5KEDN7M
 const FAUCET_PRIVATE_KEY: &str = "e26e611fc92fe535c5e2e58a6a446375bb5e3b471440af21bbe327384befb50a";
+
+// Authorization token for tests Stacks client protected endpoints
+const STACKS_NODE_AUTH_TOKEN: &str = "12345";
 
 /// Timeout used when waiting for something to happen on Stacks
 const STACKS_NODE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -72,6 +83,69 @@ pub async fn wait_for_new_nonce(
         .expect("failed to wait for new nonce");
 }
 
+/// Get a Nakamoto Stacks block by block height
+pub async fn get_block_by_height(
+    stacks_client: &StacksClient,
+    block_height: u64,
+) -> Result<NakamotoBlock, Error> {
+    let path = format!("/v3/blocks/height/{block_height}");
+    let url = stacks_client
+        .endpoint
+        .join(&path)
+        .map_err(|err| Error::PathJoin(err, stacks_client.endpoint.clone(), Cow::Owned(path)))?;
+
+    let block_bytes = stacks_client
+        .client
+        .get(url)
+        .send()
+        .await
+        .map_err(Error::StacksNodeRequest)?
+        .error_for_status()
+        .map_err(Error::StacksNodeResponse)?
+        .bytes()
+        .await
+        .map_err(Error::UnexpectedStacksResponse)?;
+
+    NakamotoBlock::consensus_deserialize(&mut &*block_bytes).map_err(Error::StacksCodec)
+}
+
+/// Response model for `/v3/blocks/replay/{block_id}`, omitting unused fields
+#[derive(Debug, serde::Deserialize)]
+pub struct BlockReplay {
+    pub block_id: StacksBlockHash,
+    pub transactions: Vec<BlockReplayTransaction>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct BlockReplayTransaction {
+    pub events: Vec<TransactionEvent>,
+}
+
+/// Replay a Nakamoto block and return its effects
+pub async fn block_replay(
+    stacks_client: &StacksClient,
+    block_id: StacksBlockHash,
+) -> Result<BlockReplay, Error> {
+    let path = format!("/v3/blocks/replay/{block_id}");
+    let url = stacks_client
+        .endpoint
+        .join(&path)
+        .map_err(|err| Error::PathJoin(err, stacks_client.endpoint.clone(), Cow::Owned(path)))?;
+
+    stacks_client
+        .client
+        .get(url)
+        .header("authorization", STACKS_NODE_AUTH_TOKEN)
+        .send()
+        .await
+        .map_err(Error::StacksNodeRequest)?
+        .error_for_status()
+        .map_err(Error::StacksNodeResponse)?
+        .json()
+        .await
+        .map_err(Error::UnexpectedStacksResponse)
+}
+
 pub fn principal_to_address(principal: &PrincipalData) -> StacksAddress {
     let principal = match principal {
         PrincipalData::Standard(addr) => addr.clone(),
@@ -87,16 +161,16 @@ pub async fn fund_stx(
 ) -> StacksTransaction {
     let payload =
         TransactionPayload::TokenTransfer(recipient.clone(), ustx, TokenTransferMemo([0u8; 34]));
-    create_stacks_tx(stacks_client, payload, FAUCET_PRIVATE_KEY).await
+    let secret_key = signer::keys::PrivateKey::from_str(FAUCET_PRIVATE_KEY).unwrap();
+    create_stacks_tx(stacks_client, payload, &secret_key).await
 }
 
-async fn create_stacks_tx(
+pub async fn create_stacks_tx(
     stacks_client: &StacksClient,
     payload: TransactionPayload,
-    sender_sk: &str,
+    sender_sk: &signer::keys::PrivateKey,
 ) -> StacksTransaction {
-    let private_key = signer::keys::PrivateKey::from_str(sender_sk).unwrap();
-    let public_key = signer::keys::PublicKey::from_private_key(&private_key);
+    let public_key = signer::keys::PublicKey::from_private_key(sender_sk);
 
     let sender_addr = StacksAddress::from_public_keys(
         C32_ADDRESS_VERSION_TESTNET_SINGLESIG,
@@ -133,7 +207,7 @@ async fn create_stacks_tx(
         payload: payload.tx_payload(),
     };
 
-    let signature = signer::signature::sign_stacks_tx(&tx, &private_key).as_stacks_sig();
+    let signature = signer::signature::sign_stacks_tx(&tx, sender_sk).as_stacks_sig();
     match tx.auth {
         TransactionAuth::Standard(TransactionSpendingCondition::Singlesig(ref mut auth)) => {
             auth.set_signature(signature)
@@ -142,6 +216,29 @@ async fn create_stacks_tx(
     }
 
     tx
+}
+
+/// Convert a Bitcoin address to the clarity representation
+pub fn address_to_clarity_arg(addr: &bitcoin::Address) -> (u8, Vec<u8>) {
+    // We cannot use `PoxAddress::from_b58` as it doesn't support regtest addresses
+    let addr_data = addr.to_address_data();
+    let bytes: &[u8] = match addr_data {
+        bitcoin::address::AddressData::P2pkh { ref pubkey_hash } => pubkey_hash.as_ref(),
+        bitcoin::address::AddressData::P2sh { ref script_hash } => script_hash.as_ref(),
+        bitcoin::address::AddressData::Segwit { ref witness_program } => {
+            witness_program.program().as_bytes()
+        }
+        _ => panic!("unexpected addr"),
+    };
+    let version: u8 = match addr.address_type().expect("unknown addr type") {
+        bitcoin::AddressType::P2pkh => AddressHashMode::SerializeP2PKH as u8,
+        bitcoin::AddressType::P2sh => AddressHashMode::SerializeP2SH as u8,
+        bitcoin::AddressType::P2wpkh => PoxAddressType20::P2WPKH as u8,
+        bitcoin::AddressType::P2wsh => PoxAddressType32::P2WSH as u8,
+        bitcoin::AddressType::P2tr => PoxAddressType32::P2TR as u8,
+        _ => todo!(),
+    };
+    (version, bytes.to_vec())
 }
 
 #[tokio::test]

@@ -181,7 +181,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     bitcoin_outpoint = %event.outpoint,
     stacks_txid = %event.txid
 ))]
-async fn handle_completed_deposit(
+pub async fn handle_completed_deposit(
     ctx: &impl Context,
     event: CompletedDepositEvent,
 ) -> Result<(), Error> {
@@ -205,7 +205,7 @@ async fn handle_completed_deposit(
     stacks_txid = %event.txid,
     request_id = %event.request_id
 ))]
-async fn handle_withdrawal_accept(
+pub async fn handle_withdrawal_accept(
     ctx: &impl Context,
     event: WithdrawalAcceptEvent,
 ) -> Result<(), Error> {
@@ -230,7 +230,7 @@ async fn handle_withdrawal_accept(
     stacks_txid = %event.txid,
     request_id = %event.request_id
 ))]
-async fn handle_withdrawal_create(
+pub async fn handle_withdrawal_create(
     ctx: &impl Context,
     event: WithdrawalRequest,
 ) -> Result<(), Error> {
@@ -255,7 +255,7 @@ async fn handle_withdrawal_create(
     stacks_txid = %event.txid,
     request_id = %event.request_id
 ))]
-async fn handle_withdrawal_reject(
+pub async fn handle_withdrawal_reject(
     ctx: &impl Context,
     event: WithdrawalRejectEvent,
 ) -> Result<(), Error> {
@@ -268,12 +268,13 @@ async fn handle_withdrawal_reject(
     Ok(())
 }
 
+/// Processes a key rotation event.
 #[tracing::instrument(skip_all, fields(
     stacks_txid = %event.txid,
     address = %event.address,
     aggregate_key = %event.aggregate_key
 ))]
-async fn handle_key_rotation(ctx: &impl Context, event: KeyRotationEvent) -> Result<(), Error> {
+pub async fn handle_key_rotation(ctx: &impl Context, event: KeyRotationEvent) -> Result<(), Error> {
     ctx.get_storage_mut()
         .write_rotate_keys_transaction(&event)
         .await?;

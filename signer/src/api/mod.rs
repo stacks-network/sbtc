@@ -2,7 +2,7 @@
 //!
 
 mod info;
-mod new_block;
+pub mod new_block;
 mod router;
 mod status;
 

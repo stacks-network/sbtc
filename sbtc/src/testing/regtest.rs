@@ -153,6 +153,15 @@ pub fn get_or_create_wallet(rpc: &Client, wallet: &str) {
     };
 }
 
+/// Get the total amount of UTXOs controlled by an address.
+pub fn get_btc_balance(rpc: &Client, public_key: &PublicKey, kind: AddressType) -> Amount {
+    let desc = descriptor_base(public_key, kind);
+    let descriptor = ScanTxOutRequest::Single(desc);
+    rpc.scan_tx_out_set_blocking(&[descriptor])
+        .unwrap()
+        .total_amount
+}
+
 /// Struct representing the bitcoin miner, all coins are usually generated
 /// to this recipient.
 pub struct Faucet<'a> {
