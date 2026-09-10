@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "pnpm run typecheck && vite build",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "oxfmt --write src vite.config.ts index.html about.html",
     "lint": "oxfmt --check src vite.config.ts index.html about.html"
