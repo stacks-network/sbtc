@@ -3,11 +3,17 @@ name = "sbtc"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "sbtc"
+path = "src/main.rs"
+required-features = ["cli"]
+
 [package.metadata.cargo-machete]
 ignored = ["bitcoincore-rpc-json"]
 
 [features]
 default = []
+cli = ["dep:clap", "dep:reqwest", "dep:tokio"]
 testing = [
     "dep:aws-smithy-http-client",
     "dep:aws-config",
@@ -37,8 +43,10 @@ aws-sdk-dynamodb = { workspace = true, optional = true }
 aws-smithy-http-client = { workspace = true, optional = true }
 bitcoincore-rpc = { workspace = true, optional = true }
 bitcoincore-rpc-json = { workspace = true, optional = true }
+clap = { workspace = true, features = ["usage"], optional = true }
 futures = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 testcontainers = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
