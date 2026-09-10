@@ -11,6 +11,7 @@ import { connectWallet } from "./wallet";
 function bindVerifier(): void {
   const form = document.querySelector<HTMLFormElement>("#verifier-form")!;
   const advancedFields = document.querySelector<HTMLElement>("#advanced-fields")!;
+  const advancedToggle = document.querySelector<HTMLButtonElement>("#advanced-toggle")!;
   const resultPanel = document.querySelector<HTMLElement>(".result-panel")!;
   const network = document.querySelector<HTMLSelectElement>("#network")!;
   const recipient = document.querySelector<HTMLInputElement>("#recipient")!;
@@ -36,13 +37,28 @@ function bindVerifier(): void {
   form.addEventListener("input", invalidateResult);
   form.addEventListener("change", invalidateResult);
 
-  document.querySelector("#advanced-toggle")!.addEventListener("click", (event) => {
-    const button = event.currentTarget as HTMLButtonElement;
-    const expanded = button.getAttribute("aria-expanded") === "true";
-    button.setAttribute("aria-expanded", String(!expanded));
-    button.lastElementChild!.textContent = expanded ? "＋" : "−";
-    advancedFields.hidden = expanded;
-  });
+  const setAdvancedExpanded = (expanded: boolean): void => {
+    advancedToggle.setAttribute("aria-expanded", String(expanded));
+    advancedToggle.lastElementChild!.textContent = expanded ? "−" : "＋";
+    advancedFields.hidden = !expanded;
+  };
+  advancedToggle.addEventListener("click", () =>
+    setAdvancedExpanded(Boolean(advancedFields.hidden)),
+  );
+
+  const reportFormValidity = (): boolean => {
+    if (form.checkValidity()) return true;
+    const invalidFields = form.querySelectorAll<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >("input:invalid, select:invalid, textarea:invalid");
+    if (Array.from(invalidFields).some((field) => advancedFields.contains(field))) {
+      setAdvancedExpanded(true);
+    }
+    const firstInvalid = invalidFields[0];
+    if (firstInvalid) showError(error, new Error(firstInvalid.validationMessage));
+    form.reportValidity();
+    return false;
+  };
 
   document.querySelectorAll<HTMLInputElement>('input[name="reclaimMode"]').forEach((radio) => {
     radio.addEventListener("change", () => {
@@ -100,7 +116,7 @@ function bindVerifier(): void {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     invalidateResult();
-    if (!form.reportValidity()) return;
+    if (!reportFormValidity()) return;
     const submittedRevision = revision;
     const isCurrent = () => active && revision === submittedRevision;
     compute.disabled = true;
