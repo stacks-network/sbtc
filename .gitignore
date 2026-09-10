@@ -5,6 +5,7 @@
 **/package-lock.json
 .pnpm-store/**
 .vscode/**
+web/deposit-address-verifier/dist/
 
 ## Developer Environment
 devenv/**/*.db

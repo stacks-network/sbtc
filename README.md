@@ -6,6 +6,7 @@
 
 - [sBTC Landing Page](https://sbtc.tech/)
 - [sBTC Docs](https://docs.stacks.co/concepts/sbtc)
+- [sBTC Address Constructor](https://stacks-sbtc.github.io/sbtc/)
 
 ## Releases
 

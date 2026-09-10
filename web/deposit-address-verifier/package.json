@@ -1,0 +1,26 @@
+{
+  "name": "@stacks-sbtc/deposit-address-verifier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "pnpm run typecheck && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "oxfmt --write src vite.config.ts index.html about.html",
+    "lint": "oxfmt --check src vite.config.ts index.html about.html"
+  },
+  "dependencies": {
+    "@scure/btc-signer": "2.0.1",
+    "@stacks/connect": "8.2.4",
+    "sbtc": "0.3.2"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0",
+    "oxfmt": "0.66.0",
+    "typescript": "5.9.3",
+    "vite": "8.0.9",
+    "vitest": "4.1.4"
+  }
+}

@@ -1,0 +1,74 @@
+name: Deploy sBTC address constructor
+
+on:
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: pages-deposit-address-verifier
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 24.15.0
+
+jobs:
+  approve:
+    name: Approve deployment
+    runs-on: ubuntu-24.04
+    environment: Tags
+    steps:
+      - name: Approval received
+        run: echo "Deployment approved"
+
+  build:
+    name: Build static site
+    needs: approve
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: stacks-sbtc/actions/checkout@505c42b153ba2ac261c276e96bc5dc7b68d61039
+
+      - name: Setup pnpm
+        uses: stacks-sbtc/actions/setup-pnpm@505c42b153ba2ac261c276e96bc5dc7b68d61039
+
+      - name: Setup Node
+        uses: stacks-sbtc/actions/setup-node@505c42b153ba2ac261c276e96bc5dc7b68d61039
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @stacks-sbtc/deposit-address-verifier...
+
+      - name: Test address constructor
+        run: pnpm --filter @stacks-sbtc/deposit-address-verifier test
+
+      - name: Lint address constructor
+        run: pnpm --filter @stacks-sbtc/deposit-address-verifier lint
+
+      - name: Build address constructor
+        run: pnpm --filter @stacks-sbtc/deposit-address-verifier build
+
+      - name: Configure GitHub Pages
+        uses: stacks-sbtc/actions/github-pages/configure-pages@ed353a33594a2fa97ea6702d838e4a935cce374d
+
+      - name: Upload GitHub Pages artifact
+        uses: stacks-sbtc/actions/github-pages/upload-pages-artifact@ed353a33594a2fa97ea6702d838e4a935cce374d
+        with:
+          path: web/deposit-address-verifier/dist
+
+  deploy:
+    name: Deploy GitHub Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: stacks-sbtc/actions/github-pages/deploy-pages@ed353a33594a2fa97ea6702d838e4a935cce374d

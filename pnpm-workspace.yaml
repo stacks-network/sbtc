@@ -4,5 +4,6 @@ packages:
   - 'blocklist-openapi-gen'
   - 'emily/openapi-gen'
   - 'docker/stacker/stacking'
+  - 'web/deposit-address-verifier'
 
 minimumReleaseAge: 10080 # 1 week
