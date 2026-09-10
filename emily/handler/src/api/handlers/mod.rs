@@ -28,6 +28,7 @@ pub mod withdrawal;
 
 /// Central error handler for Warp rejections, converting them to appropriate HTTP responses.
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
+    error!(error = ?err, "Emily request rejected");
     if err.is_not_found() {
         let json = warp::reply::json(&ErrorResponse {
             message: format!("Not Found {err:?}"),
@@ -52,7 +53,6 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         ));
     }
 
-    error!("Unhandled error: {:?}", err);
     let json = warp::reply::json(&ErrorResponse {
         message: format!("Internal Server Error: {err:?}"),
     });
