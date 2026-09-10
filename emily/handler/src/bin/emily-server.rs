@@ -89,6 +89,9 @@ async fn main() {
 
     let routes = api::routes::routes(context)
         .recover(api::handlers::handle_rejection)
+        .with(warp::trace(
+            |info| tracing::info_span!("request", method = %info.method(), path = info.path()),
+        ))
         .with(warp::log("api"))
         .with(cors);
 

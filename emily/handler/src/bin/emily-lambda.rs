@@ -45,7 +45,13 @@ async fn main() {
                 .get("x-amzn-trace-id")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("unknown");
-            info_span!("request", request_id = tracing::field::Empty, trace_id = %trace_id)
+            info_span!(
+                "request",
+                request_id = tracing::field::Empty,
+                trace_id = %trace_id,
+                method = %info.method(),
+                path = info.path(),
+            )
         }))
         .with(warp::log("api"))
         .with(cors);
