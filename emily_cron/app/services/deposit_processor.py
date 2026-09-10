@@ -2,17 +2,19 @@ import logging
 from datetime import datetime, UTC
 from itertools import chain, groupby
 from json import JSONDecodeError
-from typing import Iterable
+from typing import Any, Iterable
 
 from requests.exceptions import RequestException, JSONDecodeError
 
-from ..clients import PrivateEmilyAPI, MempoolAPI, ElectrsAPI
+from ..clients import PrivateEmilyAPI, PublicEmilyAPI, MempoolAPI, ElectrsAPI
 from ..models import (
+    CreateDepositRequest,
     DepositUpdate,
     EnrichedDepositInfo,
     RequestStatus,
     DepositInfo,
 )
+from ..utils import deposit_script_pubkey_hex
 from .. import settings
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,8 @@ class DepositProcessor:
         logger.info(f"Found {len(rbf_txs)} transactions with RBF replacements")
 
         # Group txs by RBF chain. All txs in a group have the same RBF chain.
+        # Sort first: itertools.groupby only groups adjacent equal keys.
+        rbf_txs = sorted(rbf_txs, key=lambda tx: ",".join(sorted(tx.rbf_txids)))
         for rbf_key, group_iter in groupby(rbf_txs, key=lambda tx: ",".join(sorted(tx.rbf_txids))):
 
             confirmed_txid_in_group: str | None = None
@@ -104,6 +108,121 @@ class DepositProcessor:
                 )
 
         return updates
+
+    def register_rbf_deposits(self, enriched_deposits: list[EnrichedDepositInfo]) -> int:
+        """Create Emily deposits for valid RBF replacements of known deposits.
+
+        For each deposit that has an RBF replacement chain from the mempool API,
+        fetch candidate replacement transactions and register any that pay to the
+        implied sBTC deposit taproot scriptPubKey (deposit + reclaim scripts).
+
+        RBF candidates come from the mempool `/v1/tx/{txid}/rbf` endpoint, which
+        only surfaces replacements while related transactions are still known to
+        the mempool service (typically unconfirmed / recently replaced).
+
+        Args:
+            enriched_deposits: Deposits already known to Emily, with RBF metadata
+
+        Returns:
+            Number of deposit create requests successfully submitted to Emily
+        """
+        known_outpoints = {
+            (deposit.bitcoin_txid, deposit.bitcoin_tx_output_index) for deposit in enriched_deposits
+        }
+        registered = 0
+        # Avoid creating the same replacement more than once when several
+        # originals share an RBF family.
+        created_outpoints: set[tuple[str, int]] = set()
+
+        for deposit in enriched_deposits:
+            if not deposit.rbf_txids:
+                continue
+
+            try:
+                expected_spk = deposit_script_pubkey_hex(
+                    deposit.deposit_script, deposit.reclaim_script
+                )
+            except ValueError as e:
+                logger.warning(
+                    f"Could not derive deposit scriptPubKey for {deposit.bitcoin_txid}: {e}"
+                )
+                continue
+
+            for replacement_txid in deposit.rbf_txids:
+                if replacement_txid == deposit.bitcoin_txid:
+                    continue
+
+                replacement_tx = MempoolAPI.get_transaction(replacement_txid)
+                if not replacement_tx:
+                    logger.debug(
+                        f"Could not fetch RBF replacement tx {replacement_txid} "
+                        f"for deposit {deposit.bitcoin_txid}"
+                    )
+                    continue
+
+                matching_vouts = self._deposit_vouts_for_script_pubkey(replacement_tx, expected_spk)
+                if not matching_vouts:
+                    logger.info(
+                        f"Ignoring RBF replacement {replacement_txid}: "
+                        f"no output pays to deposit scriptPubKey for {deposit.bitcoin_txid}"
+                    )
+                    continue
+
+                new_vouts = [
+                    vout
+                    for vout in matching_vouts
+                    if (replacement_txid, vout) not in known_outpoints
+                    and (replacement_txid, vout) not in created_outpoints
+                ]
+                if not new_vouts:
+                    continue
+
+                tx_hex = MempoolAPI.get_transaction_hex(replacement_txid)
+                if not tx_hex:
+                    logger.warning(
+                        f"Could not fetch transaction hex for valid RBF replacement {replacement_txid}"
+                    )
+                    continue
+
+                for vout in new_vouts:
+                    outpoint = (replacement_txid, vout)
+                    logger.info(
+                        f"Registering RBF deposit {replacement_txid}:{vout} "
+                        f"(replacement of {deposit.bitcoin_txid}:{deposit.bitcoin_tx_output_index})"
+                    )
+                    response = PublicEmilyAPI.create_deposit(
+                        CreateDepositRequest(
+                            bitcoin_txid=replacement_txid,
+                            bitcoin_tx_output_index=vout,
+                            reclaim_script=deposit.reclaim_script,
+                            deposit_script=deposit.deposit_script,
+                            transaction_hex=tx_hex,
+                        )
+                    )
+                    if response:
+                        created_outpoints.add(outpoint)
+                        registered += 1
+                    else:
+                        logger.warning(
+                            f"Failed to create Emily deposit for RBF replacement {replacement_txid}:{vout}"
+                        )
+
+        if registered:
+            logger.info(f"Registered {registered} RBF replacement deposit(s) in Emily")
+        return registered
+
+    @staticmethod
+    def _deposit_vouts_for_script_pubkey(tx: dict[str, Any], expected_spk_hex: str) -> list[int]:
+        """Return vout indexes whose scriptPubKey matches the expected deposit output."""
+        expected = expected_spk_hex.lower()
+        matching: list[int] = []
+        for index, output in enumerate(tx.get("vout", [])):
+            script_pubkey = output.get("scriptpubkey") or output.get("scriptPubKey") or ""
+            if isinstance(script_pubkey, dict):
+                script_pubkey = script_pubkey.get("hex", "")
+            if str(script_pubkey).lower() == expected:
+                matching.append(index)
+        return matching
 
     def process_expired_locktime(
         self,
@@ -280,6 +399,10 @@ class DepositProcessor:
         # Enrich deposits with additional transaction data
         enriched_deposits = self._enrich_deposits(chain(pending_deposits, accepted_deposits))
 
+        # Register valid RBF replacements before status updates so the
+        # confirmed-winner path can see newly created deposits on later runs.
+        self.register_rbf_deposits(enriched_deposits)
+
         # Process deposits and collect updates
         updates = []
 
@@ -317,7 +440,21 @@ class DepositProcessor:
             tx_data = MempoolAPI.get_transaction(deposit.bitcoin_txid)
 
             if not tx_data:
-                transaction_details.append(EnrichedDepositInfo.from_missing(deposit))
+                # Original may have been replaced and dropped from the mempool.
+                # Still ask for RBF history so we can register replacements.
+                rbf_txids = MempoolAPI.check_for_rbf(deposit.bitcoin_txid)
+                if rbf_txids:
+                    transaction_details.append(
+                        EnrichedDepositInfo.from_deposit_info(
+                            deposit,
+                            {
+                                "in_mempool": False,
+                                "rbf_txids": rbf_txids,
+                            },
+                        )
+                    )
+                else:
+                    transaction_details.append(EnrichedDepositInfo.from_missing(deposit))
                 continue
 
             if "fee" not in tx_data:
@@ -330,7 +467,9 @@ class DepositProcessor:
                 "confirmed_time": tx_data.get("status", {}).get("block_time"),
             }
 
-            # Only check for RBF if not confirmed
+            # Only check for RBF if not confirmed. Confirmed transactions are
+            # already final from the mempool's perspective; their replacements
+            # (if any) are discovered via the still-unconfirmed siblings.
             if additional_info["confirmed_height"] is None:
                 additional_info["rbf_txids"] = MempoolAPI.check_for_rbf(deposit.bitcoin_txid)
 

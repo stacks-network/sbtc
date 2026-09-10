@@ -429,8 +429,11 @@ class TestDepositProcessorWithRbf(TestDepositProcessorBase):
             status=RequestStatus.PENDING.value,
         )
 
-        # Mock the _enrich_deposits method
-        with patch.object(self.processor, "_enrich_deposits") as mock_enrich:
+        # Mock enrichment and RBF registration (tested separately)
+        with (
+            patch.object(self.processor, "_enrich_deposits") as mock_enrich,
+            patch.object(self.processor, "register_rbf_deposits", return_value=0) as mock_register,
+        ):
             # Return our test deposits when enriching
             mock_enrich.return_value = [
                 self.expired_locktime,
@@ -447,6 +450,7 @@ class TestDepositProcessorWithRbf(TestDepositProcessorBase):
 
             # Verify the enrichment was called with both deposits
             mock_enrich.assert_called_once()
+            mock_register.assert_called_once()
 
             # Verify the get_utxo_status was called for the expired_locktime deposit
             mock_get_utxo_status.assert_called_once()
@@ -489,7 +493,7 @@ class TestDepositProcessorWithRbf(TestDepositProcessorBase):
                 elif update.bitcoin_txid == "rbf_original_tx":
                     self.assertTrue("Replaced by confirmed tx" in update.status_message)
                     self.assertEqual(update.status, RequestStatus.RBF.value)
-                    self.assertEqual(update.replaced_by_txid, "rbf_replacement_tx")
+                    self.assertEqual(update.replaced_by_tx, "rbf_replacement_tx")
                 elif update.bitcoin_txid == "long_pending_tx":
                     self.assertTrue(
                         f"Pending for too long ({settings.MAX_UNCONFIRMED_TIME} seconds)"
@@ -573,6 +577,106 @@ class TestDepositProcessorWithRbf(TestDepositProcessorBase):
             self.assertEqual(result[1].fee, 100000)
             self.assertEqual(result[1].in_mempool, True)
             self.assertEqual(result[1].rbf_txids, [])
+
+
+class TestRegisterRbfDeposits(TestDepositProcessorBase):
+    """Tests for registering valid RBF replacements as Emily deposits."""
+
+    DEPOSIT_SCRIPT = (
+        "1e000000000001388005168ac681961281d3c932210a3608ce28f0e819831d"
+        "7520f898f8a6ddb86dd4608dd168355ec6135fe2839222240c01942e8e7e50dd4c89ac"
+    )
+    RECLAIM_SCRIPT = (
+        "60b275207271dd92896e50c81052c4fd1c100a02e656fa3db43807549be345dc42114c84ac"
+    )
+    EXPECTED_SPK = "51200a7ef39302e03b8dd9bd44500165adb32fa9ef0ceb75231cb433040dc771c07d"
+
+    def _deposit(self, txid: str, rbf_txids: list[str] | None = None) -> EnrichedDepositInfo:
+        return EnrichedDepositInfo(
+            bitcoin_txid=txid,
+            bitcoin_tx_output_index=0,
+            recipient="05168ac681961281d3c932210a3608ce28f0e819831d",
+            amount=1000000,
+            last_update_height=100,
+            last_update_block_hash="hash",
+            status=RequestStatus.PENDING.value,
+            reclaim_script=self.RECLAIM_SCRIPT,
+            deposit_script=self.DEPOSIT_SCRIPT,
+            in_mempool=True,
+            rbf_txids=rbf_txids or [],
+        )
+
+    @patch("app.services.deposit_processor.PublicEmilyAPI.create_deposit")
+    @patch("app.services.deposit_processor.MempoolAPI.get_transaction_hex")
+    @patch("app.services.deposit_processor.MempoolAPI.get_transaction")
+    def test_registers_matching_replacement(
+        self, mock_get_tx, mock_get_hex, mock_create_deposit
+    ):
+        original = self._deposit(
+            "original_tx", rbf_txids=["original_tx", "replacement_tx", "unrelated_rbf_tx"]
+        )
+        mock_get_tx.side_effect = lambda txid: {
+            "replacement_tx": {
+                "txid": "replacement_tx",
+                "vout": [
+                    {"scriptpubkey": self.EXPECTED_SPK, "value": 1000000},
+                    {"scriptpubkey": "5120" + "11" * 32, "value": 1000},
+                ],
+            },
+            "unrelated_rbf_tx": {
+                "txid": "unrelated_rbf_tx",
+                "vout": [{"scriptpubkey": "5120" + "22" * 32, "value": 1000000}],
+            },
+        }.get(txid)
+        mock_get_hex.return_value = "02000000000100deadbeef"
+        mock_create_deposit.return_value = {"bitcoinTxid": "replacement_tx"}
+
+        registered = self.processor.register_rbf_deposits([original])
+
+        self.assertEqual(registered, 1)
+        mock_create_deposit.assert_called_once()
+        request = mock_create_deposit.call_args[0][0]
+        self.assertEqual(request.bitcoin_txid, "replacement_tx")
+        self.assertEqual(request.bitcoin_tx_output_index, 0)
+        self.assertEqual(request.deposit_script, self.DEPOSIT_SCRIPT)
+        self.assertEqual(request.reclaim_script, self.RECLAIM_SCRIPT)
+        self.assertEqual(request.transaction_hex, "02000000000100deadbeef")
+        mock_get_hex.assert_called_once_with("replacement_tx")
+
+    @patch("app.services.deposit_processor.PublicEmilyAPI.create_deposit")
+    @patch("app.services.deposit_processor.MempoolAPI.get_transaction_hex")
+    @patch("app.services.deposit_processor.MempoolAPI.get_transaction")
+    def test_skips_already_known_replacement(
+        self, mock_get_tx, mock_get_hex, mock_create_deposit
+    ):
+        original = self._deposit("original_tx", rbf_txids=["original_tx", "replacement_tx"])
+        already_registered = self._deposit("replacement_tx")
+        mock_get_tx.return_value = {
+            "txid": "replacement_tx",
+            "vout": [{"scriptpubkey": self.EXPECTED_SPK, "value": 1000000}],
+        }
+
+        registered = self.processor.register_rbf_deposits([original, already_registered])
+
+        self.assertEqual(registered, 0)
+        mock_create_deposit.assert_not_called()
+        mock_get_hex.assert_not_called()
+
+    @patch("app.services.deposit_processor.PublicEmilyAPI.create_deposit")
+    @patch("app.services.deposit_processor.MempoolAPI.get_transaction")
+    def test_ignores_replacements_without_deposit_output(
+        self, mock_get_tx, mock_create_deposit
+    ):
+        original = self._deposit("original_tx", rbf_txids=["original_tx", "replacement_tx"])
+        mock_get_tx.return_value = {
+            "txid": "replacement_tx",
+            "vout": [{"scriptpubkey": "5120" + "33" * 32, "value": 1000000}],
+        }
+
+        registered = self.processor.register_rbf_deposits([original])
+
+        self.assertEqual(registered, 0)
+        mock_create_deposit.assert_not_called()
 
 
 class TestLongPendingProcessor(TestDepositProcessorBase):
