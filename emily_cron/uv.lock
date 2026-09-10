@@ -63,17 +63,25 @@ wheels = [
 ]
 
 [[package]]
+name = "embit"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/88/b054b00ade6d2a41749e15976cdcec4b7ec4656ac1cb917ce3de395528d1/embit-0.8.0.tar.gz", hash = "sha256:8bf4b10073c67400370ce523fb16f035fe759f6fdd987c579bdcc268d75ed770", size = 763120, upload-time = "2024-05-30T10:56:48.944Z" }
+
+[[package]]
 name = "emily-cron"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "bitcoinlib" },
+    { name = "embit" },
     { name = "requests" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "bitcoinlib", specifier = "==0.7.2" },
+    { name = "embit", specifier = "==0.8.0" },
     { name = "requests", specifier = "==2.33.1" },
 ]
 
