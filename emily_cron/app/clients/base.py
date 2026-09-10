@@ -68,6 +68,20 @@ class APIClient:
         return cls._make_request("GET", endpoint, params=params, ignore_errors=ignore_errors)
 
     @classmethod
+    def get_text(cls, endpoint: str, ignore_errors: bool = False) -> str:
+        """Perform a GET request and return the response body as text."""
+        url = f"{cls.BASE_URL}{endpoint}"
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            return response.text.strip()
+        except RequestException as e:
+            logger.error(f"Error during GET {url}: {e}")
+            if not ignore_errors:
+                raise
+            return ""
+
+    @classmethod
     def post(
         cls,
         endpoint: str,

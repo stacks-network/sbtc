@@ -154,4 +154,16 @@ class DepositUpdate:
     status: str
     status_message: str
     fulfillment: Optional[Fulfillment] = None
-    replaced_by_txid: Optional[str] = None
+    # Must serialize as replacedByTx to match Emily's DepositUpdate schema.
+    replaced_by_tx: Optional[str] = None
+
+
+@dataclass
+class CreateDepositRequest:
+    """Request body for creating a deposit in Emily."""
+
+    bitcoin_txid: str
+    bitcoin_tx_output_index: int
+    reclaim_script: str
+    deposit_script: str
+    transaction_hex: str

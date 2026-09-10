@@ -1,5 +1,6 @@
 from .deposit import (
     BlockInfo,
+    CreateDepositRequest,
     DepositInfo,
     DepositUpdate,
     EnrichedDepositInfo,

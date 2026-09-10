@@ -99,7 +99,7 @@ class DepositProcessor:
                         bitcoin_tx_output_index=tx.bitcoin_tx_output_index,
                         status=RequestStatus.RBF.value,
                         status_message=f"Replaced by confirmed tx {confirmed_txid_in_group}",
-                        replaced_by_txid=confirmed_txid_in_group,
+                        replaced_by_tx=confirmed_txid_in_group,
                     )
                 )
 

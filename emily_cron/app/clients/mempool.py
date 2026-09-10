@@ -90,6 +90,20 @@ class MempoolAPI(APIClient):
         """
         return cls.get(cls.GET_TX_ENDPOINT.format(txid=txid), ignore_errors=True)
 
+    @classmethod
+    def get_transaction_hex(cls, txid: str) -> str | None:
+        """Fetch the raw hex for a Bitcoin transaction.
+
+        Args:
+            txid: The transaction ID to fetch
+
+        Returns:
+            The transaction hex, or None if it cannot be fetched
+        """
+        # mempool.space and electrs expose /tx/{txid}/hex as plain text.
+        tx_hex = cls.get_text(f"/tx/{txid}/hex", ignore_errors=True)
+        return tx_hex or None
+
 
 class ElectrsAPI(APIClient):
     """Client for interacting with the Electrs API."""

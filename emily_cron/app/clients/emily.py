@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from ..models import DepositInfo, DepositUpdate, RequestStatus
+from ..models import CreateDepositRequest, DepositInfo, DepositUpdate, RequestStatus
 from ..utils import asdict_camel
 from .base import APIClient
 from .. import settings
@@ -19,6 +19,22 @@ class PublicEmilyAPI(APIClient):
         """Fetch deposits based on status."""
         data: dict[str, Any] = cls.get(f"/deposit?status={status.value}", ignore_errors=True)
         return [DepositInfo.from_json(deposit) for deposit in data.get("deposits", [])]
+
+    @classmethod
+    def create_deposit(cls, request: CreateDepositRequest) -> dict[str, Any]:
+        """Create a deposit request in Emily.
+
+        Args:
+            request: CreateDepositRequest with txid/vout/scripts/tx hex
+
+        Returns:
+            The created (or existing) deposit response, or empty dict on error
+        """
+        return cls.post(
+            "/deposit",
+            json_data=asdict_camel(request),
+            ignore_errors=True,
+        )
 
 
 class PrivateEmilyAPI(PublicEmilyAPI):
