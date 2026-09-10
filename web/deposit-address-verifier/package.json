@@ -17,6 +17,7 @@
     "sbtc": "0.3.2"
   },
   "devDependencies": {
+    "jsdom": "26.1.0",
     "oxfmt": "0.66.0",
     "typescript": "5.9.3",
     "vite": "8.0.9",
