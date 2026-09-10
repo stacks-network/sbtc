@@ -7,7 +7,7 @@ permissions: read-all
 
 concurrency:
   group: pages-deposit-address-verifier
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   NODE_VERSION: 24.15.0
@@ -39,7 +39,7 @@ jobs:
           cache: "pnpm"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter @stacks-sbtc/deposit-address-verifier...
 
       - name: Test address constructor
         run: pnpm --filter @stacks-sbtc/deposit-address-verifier test
