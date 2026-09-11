@@ -3,7 +3,6 @@
 use crate::common::error::ErrorResponse;
 
 use std::convert::Infallible;
-use tracing::error;
 use warp::{Rejection, Reply, http::StatusCode};
 
 /// Chainstate handlers.
@@ -28,7 +27,7 @@ pub mod withdrawal;
 
 /// Central error handler for Warp rejections, converting them to appropriate HTTP responses.
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
-    error!(error = ?err, "Emily request rejected");
+    tracing::debug!(error = ?err, "Emily request rejected");
     if err.is_not_found() {
         let json = warp::reply::json(&ErrorResponse {
             message: format!("Not Found {err:?}"),
