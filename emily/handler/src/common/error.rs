@@ -411,13 +411,14 @@ impl Reject for Error {}
 /// provided directly from Warp as a reply.
 impl Reply for Error {
     /// Convert self into a warp response.
-    #[cfg(not(feature = "testing"))]
-    fn into_response(self: Error) -> warp::reply::Response {
-        self.into_production_error().into_response()
-    }
-    /// Convert self into a warp response.
-    #[cfg(feature = "testing")]
     fn into_response(self) -> warp::reply::Response {
-        self.into_response()
+        // Log before production sanitization discards the underlying error.
+        // Debug includes nested SDK error details that Display can omit.
+        tracing::error!(error = ?self, "Emily request failed");
+        #[cfg(not(feature = "testing"))]
+        let error = self.into_production_error();
+        #[cfg(feature = "testing")]
+        let error = self;
+        Error::into_response(error)
     }
 }
