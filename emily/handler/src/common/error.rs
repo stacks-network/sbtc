@@ -419,6 +419,6 @@ impl Reply for Error {
         let error = self.into_production_error();
         #[cfg(feature = "testing")]
         let error = self;
-        error.into_response()
+        Error::into_response(error)
     }
 }
